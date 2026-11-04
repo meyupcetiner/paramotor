@@ -71,7 +71,7 @@ export async function invoiceForm(ctx, id) {
     inv = { title: '', customer: pre ? { customer_id: pre.id, name: pre.name || '', phone: pre.phone || '', address: pre.address || '', il: pre.il || '', ilce: pre.ilce || '' } : { name: '', phone: '', address: '', il: '', ilce: '' }, ...(pre && pre.is_official ? { is_official: 1, tax_no: pre.tax_no, official_title: pre.official_title, tax_office: pre.tax_office, person_type: pre.person_type } : {}), date: today(), invoice_no: '', order_info: '', note: '', source_id: null, payment_id: null, rep_id: null, is_official: pre && pre.is_official ? 1 : 0, prices_incl_vat: st.prices_incl_vat_default ? 1 : 0, lines: [blankLine()] };
     setTitle(`<span class="crumb"><a href="#/b/${brand}/faturalar">Satış Faturaları</a> › </span>Yeni Fatura`);
   }
-  function blankLine() { return { product_id: null, variant_id: null, description: '', qty: 1, unit: 'Adet', unit_price: '', vat_rate: Number(st.default_vat) || 20, band_length_mm: null, is_band: false }; }
+  function blankLine() { return { product_id: null, variant_id: null, description: '', qty: 1, unit: 'Adet', unit_price: '', vat_rate: Number(st.default_vat ?? 0) || 0, band_length_mm: null, is_band: false }; }
   const custOrders = { n: id ? inv.customer_order_no : null };
   if (!id && inv.customer.customer_id) { const pc = await api('/customers/' + inv.customer.customer_id); custOrders.n = (pc.invoices || []).length + 1; }
 

@@ -1,0 +1,13 @@
+{
+  "name": "paramotor",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Paramotor — Testeresan detaylı muhasebe analiz programı (Cloudflare Workers + D1)",
+  "scripts": {
+    "schema": "node dev/build-schema.mjs",
+    "dev": "node dev/server.mjs",
+    "test": "node test/unit.mjs",
+    "deploy": "npx wrangler deploy"
+  }
+}

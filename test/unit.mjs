@@ -1,0 +1,24 @@
+// Ayrıştırıcı + eşleştirici birim testleri: node test/unit.mjs
+import { readFileSync } from 'node:fs';
+import { parseText, normalizePhone } from '../src/parser.js';
+import { matchItem } from '../src/match.js';
+import { expandCatalog } from '../src/catalog.js';
+let id = 0; const cat = expandCatalog().flatMap(p => p.variants.map(v => ({ ...v, id: ++id, product_id: p.key, p: { ...p, id: p.key } })));
+const S = ['Instagram', 'Facebook', 'WhatsApp', 'Mağaza'], P = ['Havale', 'Kapıda Nakit', 'Kapıda Kredi Kartı'];
+let fail = 0; const eq = (a, b, m) => { if (JSON.stringify(a) !== JSON.stringify(b)) { fail++; console.log('✗', m, '→', a, '≠', b); } else console.log('✓', m); };
+eq(normalizePhone('+90 532 416 66 30').phone, '05324166630', 'telefon normalize');
+const o = parseText(readFileSync(new URL('./ornek-mesajlar.txt', import.meta.url), 'utf8'), { sources: S, payments: P });
+eq(o.length, 4, '4 sipariş ayrıştı');
+eq([o[0].customer_name, o[0].il, o[0].ilce, o[0].payment, o[0].source], ['Ali Şentürk', 'İstanbul', 'Fatih', 'Kapıda Nakit', 'Instagram'], 'sipariş 1 alanları');
+eq([o[1].il, o[1].ilce, o[1].payment], ['Bursa', 'Osmangazi', 'Havale'], 'sipariş 2 konum/ödeme');
+eq([o[2].customer_name, o[2].phone, o[2].payment, o[2].source, o[2].order_total], ['Ayşe Demir', '05367435511', 'Kapıda Kredi Kartı', 'Facebook', 1350], 'sipariş 3 etiketli alanlar');
+eq(o[3].payment, 'Belirsiz', 'sadece "kapıda ödeme" → belirsiz');
+eq([o[1].items[0].qty, o[1].items[0].length_mm], [2, 2240], 'şerit 2240*27*0.9 2 adet');
+eq([o[2].items[0].qty, o[2].items[0].length_mm], [3, 1650], 'et şeridi 1650 mm 3 adet');
+const m1 = matchItem({ raw_text: 'Kronberg MDF 300x96 2 adet' }, cat); const v1 = cat.find(v => v.id === m1.variant_id);
+eq([v1.p.name, v1.diameter, v1.teeth], ['Kronberg MDF Laminant Suntalam (Pozitif Diş)', 300, 96], 'MDF 300x96 eşleşti');
+const m2 = matchItem({ raw_text: '2240*27*0.9 bimetal şerit 3/4' }, cat); const v2 = cat.find(v => v.id === m2.variant_id);
+eq([v2.width, v2.thickness, v2.tpi, v2.p.subcategory], [27, 0.9, '3/4', 'Bimetal'], 'bimetal 27x0.9 3/4 eşleşti');
+const m3 = matchItem({ raw_text: 'et kemik şeridi 16 lük' }, cat); const v3 = cat.find(v => v.id === m3.variant_id);
+eq([v3.width, v3.p.subcategory], [16, 'Et-Kemik'], 'et kemik 16 lük eşleşti');
+console.log(fail ? `${fail} test başarısız` : 'Tüm testler geçti'); process.exit(fail ? 1 : 0);

@@ -11,7 +11,7 @@ not_found_handling = "single-page-application"
 [[d1_databases]]
 binding = "DB"
 database_name = "paramotor-db"
-database_id = "BURAYA_D1_ID"   # npx wrangler d1 create paramotor-db çıktısındaki id
+database_id = "34d4537c-609f-4af8-a0e3-d74ea0ceaa57"
 
 # Opsiyonel: yüklenen ekran görüntülerini saklamak için R2
 # [[r2_buckets]]

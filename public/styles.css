@@ -1,25 +1,25 @@
-/* PARAMOTOR — tasarım jetonları: Paramotor logosu (#54C810 yeşil, #191919 zemin) + Envato koyu tema dili + Paraşüt düzeni */
+/* PARAMOTOR — tasarım jetonları: Paramotor logosu (#5FFF00 yeşil, #3019E5 mavi, #191919 zemin) + Envato koyu tema dili + Paraşüt düzeni */
 :root {
   --font: "Inter Tight", "Inter", "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
   --font-label: var(--font);
   --mono: var(--font);
-  --brand: #54C810;
+  --brand: #5FFF00;
   --radius: 14px; --radius-sm: 9px; --radius-pill: 999px;
   --side-w: 236px;
   color-scheme: dark;
   --bg: #141414; --bg-2: #191919; --surface: #1d1d1d; --surface-2: #242424; --surface-3: #2c2c2c; --hover: #2a2a2a;
   --line: #2a2a2a; --line-2: #363636;
-  --blue: #3d8bfd; --blue-soft: rgba(61, 139, 253, .13);
+  --blue: #3019E5; --blue-text: #9184ff; --blue-soft: rgba(48, 25, 229, .22);
   --text: #f1f1ef; --text-2: #c9c9c5; --muted: #8f8f8a;
-  --accent: #54C810; --accent-hi: #69dc22; --accent-ink: #0c1803; --accent-soft: rgba(84, 200, 16, .14);
-  --warn: #f2b90c; --warn-soft: rgba(242, 185, 12, .13); --danger: #ff5d52; --danger-soft: rgba(255, 93, 82, .13); --info: var(--blue);
+  --accent: #5FFF00; --accent-hi: #86ff45; --accent-ink: #0b1a00; --accent-soft: rgba(95, 255, 0, .12);
+  --warn: #f2b90c; --warn-soft: rgba(242, 185, 12, .13); --danger: #ff5d52; --danger-soft: rgba(255, 93, 82, .13); --info: var(--blue-text);
   --shadow: 0 10px 30px rgba(0, 0, 0, .35);
-  --c1: #54C810; --c2: #4da3ff; --c3: #f2b90c; --c4: #ff6b9a; --c5: #a78bfa; --c6: #2dd4bf; --c7: #fb923c; --c8: #94a3b8;
+  --c1: #5FFF00; --c2: #7a6bff; --c3: #f2b90c; --c4: #ff6b9a; --c5: #a78bfa; --c6: #2dd4bf; --c7: #fb923c; --c8: #94a3b8;
 }
 :root[data-theme="light"] {
   color-scheme: light;
   --bg: #f2f3ef; --bg-2: #ebece7; --surface: #ffffff; --surface-2: #f6f7f3; --surface-3: #eceee8; --hover: #eef0ea;
-  --line: #e2e4dd; --line-2: #d3d6cc; --blue: #1f6fe5; --blue-soft: rgba(31, 111, 229, .1);
+  --line: #e2e4dd; --line-2: #d3d6cc; --blue: #3019E5; --blue-text: #3019E5; --blue-soft: rgba(48, 25, 229, .1);
   --text: #191919; --text-2: #3b3d38; --muted: #6c6f66;
   --accent: #3c9a06; --accent-hi: #46ad0a; --accent-ink: #ffffff; --accent-soft: rgba(60, 154, 6, .12);
   --warn: #b98500; --warn-soft: rgba(242, 185, 12, .18); --danger: #d93a2f; --danger-soft: rgba(217, 58, 47, .1);
@@ -57,18 +57,18 @@ img { max-width: 100%; }
 @media (prefers-reduced-motion: reduce) { #intro .half, #intro .cut { transition-duration: .01s; } }
 
 /* ---------- Giriş / şifre ---------- */
-.auth { min-height: 100vh; display: grid; place-items: center; padding: 24px; background: radial-gradient(1200px 500px at 50% -10%, rgba(84, 200, 16, .12), transparent 60%), var(--bg); }
+.auth { min-height: 100vh; display: grid; place-items: center; padding: 24px; background: radial-gradient(1200px 500px at 50% -10%, rgba(48, 25, 229, .16), transparent 60%), var(--bg); }
 .auth .box { width: min(400px, 100%); background: var(--surface); border: 1px solid var(--line); border-radius: 20px; padding: 32px 28px; box-shadow: var(--shadow); }
-.auth img { width: 230px; display: block; margin: 0 auto 6px; }
+.auth img { width: 260px; display: block; margin: 0 auto 6px; }
 .auth h2 { font-size: 15px; font-weight: 500; text-align: center; color: var(--muted); margin: 0 0 22px; }
 
 /* ---------- Marka seçimi ---------- */
-.select-page { min-height: 100vh; padding: 36px 20px 60px; background: radial-gradient(1000px 420px at 50% -8%, rgba(84, 200, 16, .10), transparent 60%), var(--bg); }
+.select-page { min-height: 100vh; padding: 36px 20px 60px; background: radial-gradient(1000px 420px at 50% -8%, rgba(48, 25, 229, .14), transparent 60%), var(--bg); }
 .select-page .top { display: flex; justify-content: space-between; align-items: center; max-width: 1040px; margin: 0 auto 36px; }
-.select-page .top img { height: 34px; }
+.select-page .top img { height: 46px; }
 .select-wrap { max-width: 1040px; margin: 0 auto; display: grid; gap: 20px; }
 .bcard { background: var(--surface); border: 1px solid var(--line); border-radius: 20px; cursor: pointer; overflow: hidden; display: flex; flex-direction: column; transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease; text-decoration: none; }
-.bcard:hover, .bcard:focus-visible { transform: translateY(-3px); border-color: var(--accent); box-shadow: 0 14px 40px rgba(84, 200, 16, .12); outline: none; }
+.bcard:hover, .bcard:focus-visible { transform: translateY(-3px); border-color: var(--accent); box-shadow: 0 14px 40px rgba(48, 25, 229, .25); outline: none; }
 .bcard .plate { background: #fff; display: grid; place-items: center; padding: 18px; height: 170px; }
 .bcard .plate img { max-height: 134px; max-width: 86%; object-fit: contain; }
 .bcard .plate .ph { color: #333; font-weight: 800; font-size: 22px; }
@@ -87,7 +87,7 @@ img { max-width: 100%; }
 .app.collapsed { --side-w: 72px; }
 .side { position: sticky; top: 0; height: 100vh; background: var(--bg-2); border-right: 1px solid var(--line); display: flex; flex-direction: column; padding: 16px 12px; gap: 4px; overflow-y: auto; }
 .side .logo { display: flex; align-items: center; justify-content: space-between; padding: 4px 6px 14px; }
-.side .logo img.full { height: 34px; }
+.side .logo img.full { height: 42px; }
 .side .logo img.icon { height: 32px; display: none; }
 .app.collapsed .side .logo img.full { display: none; }
 .app.collapsed .side .logo img.icon { display: block; }
@@ -210,7 +210,7 @@ table.tbl.compact th { padding: 8px 10px; }
 .pager { display: flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
 .pager button { min-width: 38px; height: 34px; border: 0; border-right: 1px solid var(--line); background: var(--surface); cursor: pointer; }
 .pager button:last-child { border-right: 0; }
-.pager button.on { background: var(--blue-soft); color: var(--blue); font-weight: 700; }
+.pager button.on { background: var(--blue-soft); color: var(--blue-text); font-weight: 700; }
 .pager button[disabled] { opacity: .4; }
 .sumtext { font-size: 13px; color: var(--muted); }
 .sumtext b { color: var(--text); font-weight: 600; }
@@ -242,7 +242,7 @@ table.tbl.compact th { padding: 8px 10px; }
 .lines tr.band td { padding-top: 0; }
 .lines .bandbox { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); padding: 4px 0 8px; flex-wrap: wrap; }
 .lines .bandbox input { width: 110px; }
-.lines .bandbox b { color: var(--blue); font-weight: 600; }
+.lines .bandbox b { color: var(--blue-text); font-weight: 600; }
 .totals { display: grid; justify-content: end; padding: 10px 22px 24px; }
 .totals table { border-collapse: collapse; min-width: 340px; }
 .totals td { padding: 12px 10px; border-top: 1px solid var(--line); }

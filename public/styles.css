@@ -410,3 +410,15 @@ td .avatar::after { display: none; }
   .irow .lt { display: none; }
   .ocard .dgrid { grid-template-columns: 1fr 1fr; }
 }
+
+/* önemli bilgiler belirgin */
+.mchip { display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 8px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--surface-3); color: var(--text-2); }
+.mchip.src, .mchip.pay { background: color-mix(in srgb, var(--c, #777) 22%, transparent); color: color-mix(in srgb, var(--c, #999) 55%, var(--text)); }
+.mchip.rep { background: var(--blue-soft); color: var(--blue-text); }
+.mchip.date { background: transparent; padding: 0; color: var(--muted); font-weight: 500; }
+.mchip.loc { background: transparent; padding: 0 2px; color: var(--text-2); font-weight: 500; }
+.irow [data-ik=description] { font-weight: 600; }
+.irow [data-ik=qty], .irow [data-ik=unit_price] { font-weight: 700; text-align: right; }
+.irow [data-ik=line_total] { color: var(--muted); text-align: right; }
+.ocard .sum { color: var(--accent); }
+:root[data-theme="light"] .ocard .sum { color: var(--text); }

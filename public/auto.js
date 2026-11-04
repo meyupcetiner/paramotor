@@ -133,11 +133,12 @@ function orderCard(o, i) {
   const miss = missing(o);
   const ex = o.existing_customer;
   const rp = repById(o.rep_id); const src = srcById(o.source_id), pay = payById(o.payment_id);
-  const meta = [dmy(o.date), src ? src.name : null, pay ? pay.name : null, rp ? rp.name : (o.rep_raw ? o.rep_raw + ' (yeni)' : null), [o.ilce, o.il].filter(Boolean).join(' / ') || null].filter(Boolean);
+  const chip = (txt, cls, color) => txt ? `<span class="mchip ${cls}"${color ? ` style="--c:${esc(color)}"` : ''}>${esc(txt)}</span>` : '';
+  const metaHtml = [chip(dmy(o.date), 'date'), chip(src && src.name, 'src', src && src.color), chip(pay && pay.name, 'pay', pay && pay.color), chip(rp ? rp.name : (o.rep_raw ? o.rep_raw + ' (yeni)' : ''), 'rep'), chip([o.ilce, o.il].filter(Boolean).join(' / '), 'loc')].filter(Boolean).join('');
   const tags = [o.anonymous ? '<span class="pill soft">Mağaza · isimsiz</span>' : ex ? `<span class="badge-old">${ex.orders + 1}. sipariş</span>` : '', o.is_official ? '<span class="pill soft">Resmi</span>' : '', o.exchange ? '<span class="pill warn">Değişim — satış değil</span>' : '', o.duplicate ? `<span class="pill bad">Mükerrer: ${esc(o.duplicate.invoice_no)}</span>` : '', o.batch_duplicate_of !== undefined ? `<span class="pill bad">#${o.batch_duplicate_of + 1} ile aynı</span>` : ''].join('');
   return `<div class="ocard ${o._ok && !o._off ? 'ok' : ''} ${o._off ? 'dis' : ''}" data-i="${i}">
     <div class="top"><span class="num">${i + 1}</span>
-      <div class="who"><input data-k="customer_name" value="${esc(o.customer_name)}" placeholder="${o.anonymous ? 'Mağaza müşterisi (isimsiz)' : 'Ad soyad'}"><div class="meta">${meta.map(esc).join('<span class="dot"></span>')} ${tags}</div></div>
+      <div class="who"><input data-k="customer_name" value="${esc(o.customer_name)}" placeholder="${o.anonymous ? 'Mağaza müşterisi (isimsiz)' : 'Ad soyad'}"><div class="meta">${metaHtml} ${tags}</div></div>
       <div class="sum">${money(orderTotal(o))}${o.order_total != null && Math.abs(o.order_total - orderTotal(o)) > 1 ? `<small>mesajda ${money(o.order_total)}</small>` : ''}</div>
       <div class="row" style="gap:6px"><label class="chk-ok ${o._ok && !o._off ? 'on' : ''}"><input type="checkbox" data-a="ok" ${o._ok ? 'checked' : ''}>${icon('check')} Onayla</label><button class="btn sm ghost icon" data-a="off" title="${o._off ? 'Geri al' : 'Atla'}">${icon(o._off ? 'history' : 'x')}</button></div></div>
     <div class="items">${(o.items || []).map((it, j) => itemRow(it, j)).join('')}</div>

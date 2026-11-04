@@ -9,7 +9,7 @@ const IL_FOLD = Object.keys(IL).map(il => ({ il, f: fold(il), ilceler: IL[il].ma
 export const PHONE_RE = /(?:\+?\s?90[\s.-]?)?\(?0?\s?5\d{2}\)?[\s.-]?\d{3}[\s.-]?\d{2}[\s.-]?\d{2}/g;
 const WA_HEADER = /^\s*\[?\d{1,2}[./]\d{1,2}[./]\d{2,4},?\s+\d{1,2}[:.]\d{2}(?::\d{2})?\]?\s*(?:-\s*)?(?:[^:\n]{1,40}):\s?/;
 const PRODUCT_WORDS = /(testere|şerit|serit|bıçak|bicak|daire|kronberg|onci|glg|krabbe|junior|schuster|flamex|freud|mdf|alüminyum|aluminyum|ahşap|ahsap|dry ?cut|bimetal|karbon|carbide|kemik|betopan|planya|tpi|\bdiş\b|\bdis\b|\bz\s?\d{2,3}\b|\d{2,4}\s*[x×*]\s*\d)/i;
-const ADDRESS_WORDS = /(mah\.?|mahalle|mh\.?|sok\.?|sokak|sk\.?|cad\.?|cadde|cd\.?|bulvar|blv|no\s*:?\s*\d|apt|apartman|sitesi|site|blok|daire\s*:?\s*\d|kat\s*:?\s*\d|köyü|köy|osb|sanayi|san\.|organize)/i;
+const ADDRESS_WORDS = /(?<![\p{L}])(mah\.?|mahallesi|mahalle|mh\.?|sok\.?|sokak|sokağı|sk\.?|cad\.?|caddesi|cadde|cd\.?|bulvar[ıi]?|blv\.?|no\s*[:.=]?\s*\d|apt\.?|apartman[ıi]?|sitesi|site|blok|daire\s*[:.]?\s*\d|d\s*[:.]\s*\d|kat\s*[:.]?\s*\d|köyü|köy|osb|sanayi|san\.|organize|işhanı|plaza|merkez)(?![\p{L}])/iu;
 
 export function normalizePhone(raw) {
   if (!raw) return { phone: '', ok: false };
@@ -351,10 +351,12 @@ function parseWA(m, idx, sources, payments, reps = []) {
       const src = SRC_MAP.find(([re]) => re.test(mm[1])); if (src && sources.includes(src[1])) o.source = src[1];
       seenTotal = true; o.order_total = 0; if (EXCH_RE.test(mm[2])) o.exchange = true; notes.push(mm[2]); return;
     }
-    // ürün satırı
-    if ((mm = l.match(ITEM_RE)) || (mm = l.match(ITEM2_RE))) {
+    // ürün satırı (adet öneki yoksa "305x80z Kronberg" gibi ölçüyle başlayan satır = 1 adet)
+    let noQty = false;
+    if (!mm && /^\d{2,4}\s*[x*×]\s*\d/i.test(l) && !PHONE_RE.test(l) && (PHONE_RE.lastIndex = 0, true)) { mm = [l, '1', l]; noQty = true; }
+    if (mm || (mm = l.match(ITEM_RE)) || (mm = l.match(ITEM2_RE))) {
       let body = mm[2].trim();
-      const it = { raw_text: l, qty: parseInt(mm[1]), unit_price: null, line_total: null, uncertain: [] };
+      const it = { raw_text: l, qty: parseInt(mm[1]), unit_price: null, line_total: null, uncertain: noQty ? ['qty_assumed'] : [] };
       const notesIn = (body.match(/\(([^)]*)\)/g) || []).map(x => x.slice(1, -1));
       const pt = priceTail(body.replace(/\([^)]*\)/g, ' ').replace(/\s+/g, ' ').trim());
       if (pt) { it.line_total = pt.v; if (pt.vat) { it.vat = pt.vat; o.vat_mode = o.vat_mode || pt.vat; } }
@@ -429,6 +431,8 @@ function parseWA(m, idx, sources, payments, reps = []) {
     if (!o.store && o.il && !o.ilce) o.uncertain_fields.push('ilce');
   }
   if (o.source === 'Belirsiz') o.uncertain_fields.push('source');
+  // iş kuralı: ödeme şekli hiç yazılmamış kargo siparişi = Havale
+  if (o.payment === 'Belirsiz' && !o.is_official && !o.anonymous && !o.store && !/kap[ıi]da/i.test(m.text) && payments.includes('Havale')) o.payment = 'Havale';
   if (o.payment === 'Belirsiz' && !o.is_official && !o.anonymous && !o.store) o.uncertain_fields.push('payment');
   if (!o.items.length) o.uncertain_fields.push('items');
   if (!o.date) o.uncertain_fields.push('date');

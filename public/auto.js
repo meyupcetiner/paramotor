@@ -16,15 +16,14 @@ export async function autoPage(ctx) {
   const hasKey = S.boot.hasApiKey;
   el.innerHTML = `
   <div class="tabs"><a class="on" href="#/b/${brand}/otomatik">Yeni giriş</a><a href="#/b/${brand}/otomatik?tab=gecmis">Geçmiş ve doğruluk</a></div>
-  ${hasKey ? '' : `<div class="notice">${icon('warn')} Sunucuda <b>ANTHROPIC_API_KEY</b> tanımlı değil. Şu an sadece <b>yapıştırılan metin</b> kural tabanlı ayrıştırıcıyla okunur; ekran görüntüsü okumak için Cloudflare'de anahtarı tanımlayın (kurulum notlarına bakın).</div>`}
   <div class="card"><div class="bd" style="padding-top:18px">
     <div class="drop" id="drop">
-      <textarea class="in" id="txt" placeholder="WhatsApp sevkiyat grubundaki sipariş mesajlarını buraya yapıştırın…&#10;Ekran görüntülerini bu kutuya sürükleyip bırakabilir, Ctrl+V ile yapıştırabilir veya aşağıdan seçebilirsiniz (en fazla ${MAX_IMG} görsel).">${esc(STATE.text)}</textarea>
+      <textarea class="in" id="txt" placeholder="WhatsApp sevkiyat grubundan mesajları seçip kopyalayın ve buraya yapıştırın.&#10;Tarih, müşteri, ürün, fiyat, kaynak (Wp/insta/Mağaza) ve temsilci (M.cemal vb.) otomatik okunur.">${esc(STATE.text)}</textarea>
       <div class="thumbs" id="th"></div>
-      <div class="row wrap" style="padding:6px 4px 0"><label class="btn sm">${icon('image')} Görsel seç<input type="file" id="file" accept="image/*" multiple hidden></label><span class="muted small" id="imgc"></span><span class="sp"></span><span class="muted small">Okuma: <b>${hasKey ? 'Claude (metin + görsel)' : 'Kural tabanlı (sadece metin)'}</b></span></div>
+      <div class="row wrap ${hasKey ? '' : 'hidden'}" style="padding:6px 4px 0"><label class="btn sm">${icon('image')} Görsel seç<input type="file" id="file" accept="image/*" multiple hidden></label><span class="muted small" id="imgc"></span></div>
     </div>
     <div class="row wrap" style="margin-top:14px;gap:14px">
-      <label class="field"><span>Satış tarihi — mesajın başında [tarih saat] yoksa kullanılır</span><input class="in" type="date" id="date" value="${esc(STATE.date)}" style="width:210px"></label>
+      <label class="field"><span>Tarih (sadece mesajda [tarih saat] yoksa)</span><input class="in" type="date" id="date" value="${esc(STATE.date)}" style="width:210px"></label>
       <div class="row" style="align-self:end;gap:6px"><button class="btn sm" data-d="0">Bugün</button><button class="btn sm" data-d="-1">Dün</button></div>
       <span class="sp"></span>
       ${hasKey ? `<label class="chk small" style="align-self:end"><input type="checkbox" id="rule"> Metni kural tabanlı oku (API kullanma)</label>` : ''}
@@ -67,7 +66,7 @@ export async function autoPage(ctx) {
     $('#res', el).innerHTML = `<div class="card"><div class="empty"><span class="spin"></span><div style="margin-top:10px">Mesajlar okunuyor${STATE.images.length ? `, ${STATE.images.length} görsel işleniyor` : ''}… Bu işlem görsel sayısına göre 10–60 sn sürebilir.</div></div></div>`;
     try {
       const r = await api.post('/auto/parse', { brand, date: dateEl.value, text: txt.value, images: STATE.images, engine: $('#rule', el)?.checked ? 'kural' : undefined });
-      STATE.result = { ...r, date: dateEl.value, orders: r.orders.map((o, i) => ({ ...o, _raw_index: i, _ok: false, _off: !!(o.duplicate || o.batch_duplicate_of !== undefined) })) };
+      STATE.result = { ...r, date: dateEl.value, orders: r.orders.map((o, i) => ({ ...o, _raw_index: i, _ok: false, _off: !!(o.duplicate || o.batch_duplicate_of !== undefined || o.exchange) })) };
       drawResult(ctx);
     } catch (e) { $('#res', el).innerHTML = `<div class="notice">${esc(e.message)}</div>`; }
     btn.disabled = false; btn.innerHTML = `${icon('spark')} Oluştur`;
@@ -75,141 +74,141 @@ export async function autoPage(ctx) {
   if (STATE.result) drawResult(ctx);
 }
 
+
+const MISS_TR = { customer_name: 'Ad soyad', phone: 'Telefon', il: 'İl', ilce: 'İlçe', source: 'Kaynak', payment: 'Ödeme', date: 'Tarih', rep: 'Temsilci', items: 'Ürün' };
+function missing(o) {
+  const m = [];
+  if (!o.anonymous) { if (!o.customer_name) m.push('customer_name'); if (!phoneNorm(o.phone)) m.push('phone'); }
+  if (!o.source_id) m.push('source');
+  if (!o.payment_id && !o.anonymous && !o.is_official && !o.exchange) m.push('payment');
+  if (!o.date) m.push('date');
+  if (!o.rep_id && !o.rep_raw) m.push('rep');
+  if (!(o.items || []).length) m.push('items');
+  return m;
+}
+const itemWarn = it => it.confidence !== 'ok' || (it.warnings || []).length > 0;
+const orderTotal = o => (o.items || []).reduce((a, it) => a + (Number(it.qty) || 0) * (Number(it.unit_price) || 0), 0);
+
 function drawResult(ctx) {
   const { brand, el } = ctx; const R = STATE.result; const box = $('#res', el);
   const orders = R.orders;
-  if (!orders.length) { box.innerHTML = '<div class="notice">Mesajlarda sipariş bulunamadı. Metni/görseli kontrol edin.</div>'; return; }
-  const nWarn = orders.filter(o => issues(o).length).length;
-  box.innerHTML = `<div class="card"><div class="bd" style="padding-top:16px"><div class="row wrap">
-      <div><b style="font-size:16px">${orders.length} sipariş bulundu</b> <span class="muted">· ${[...new Set(orders.map(o => dmy(o.date || R.date)))].filter(Boolean).join(', ')} · okuma: ${esc(R.engine === 'claude' ? 'Claude' : 'kural tabanlı')}</span><div class="small ${nWarn ? '' : 'pos'}" style="margin-top:2px">${nWarn ? `${icon('warn')} ${nWarn} siparişte kontrol edilmesi gereken alan var (sarı işaretli).` : 'Belirsiz alan yok.'}</div></div>
-      <span class="sp"></span><label class="chk small"><input type="checkbox" id="incl" ${S.boot.settings.prices_incl_vat_default ? 'checked' : ''}> Mesajdaki fiyatlar KDV dahil</label>
-      <button class="btn" id="all">${icon('check')} Hepsini onayla</button><button class="btn pri up" id="commit">Onaylananları kaydet (<span id="nok">0</span>)</button></div></div></div>
-    <div id="ol" style="display:grid;gap:14px"></div>
-    <div class="row"><button class="btn sm" id="addo">+ Elle sipariş ekle</button><span class="sp"></span><button class="btn sm ghost" id="reset">Taslağı temizle</button></div>`;
+  if (!orders.length) { box.innerHTML = '<div class="notice">Mesajlarda sipariş bulunamadı. Metni kontrol edin.</div>'; return; }
+  const nCheck = orders.filter(o => !o._off && (missing(o).length || o.items.some(itemWarn))).length;
+  const payOpts = S.boot.payments.filter(s => s.active).map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('');
+  box.innerHTML = `<div class="card"><div class="bd" style="padding:16px 18px"><div class="row wrap" style="gap:12px">
+      <div><b style="font-size:17px">${orders.length} sipariş</b> <span class="muted">· ${[...new Set(orders.map(o => dmy(o.date || R.date)))].filter(Boolean).join(', ')}</span>
+        <div class="small muted" style="margin-top:2px">${nCheck ? `<span style="color:var(--warn)">${nCheck} siparişte eksik/kontrol</span> · ` : ''}değişim, mükerrer olanlar atlandı olarak gelir</div></div>
+      <span class="sp"></span>
+      <select class="in sm" id="bulkpay" style="width:auto"><option value="">Ödemesi boş olanlara…</option>${payOpts}</select>
+      <button class="btn" id="all">${icon('check')} Hepsini onayla</button><button class="btn pri" id="commit">Kaydet (<span id="nok">0</span>)</button></div></div></div>
+    <div id="ol" style="display:grid;gap:10px"></div>
+    <div class="row"><button class="btn sm ghost" id="addo">+ Elle sipariş ekle</button><span class="sp"></span><button class="btn sm ghost" id="reset">Temizle</button></div>`;
   const ol = $('#ol', box);
-  ol.innerHTML = orders.map((o, i) => orderCard(o, i)).join('');
-  orders.forEach((o, i) => bindOrder(ctx, ol.querySelector(`.order[data-i="${i}"]`), o, i));
   const cnt = () => { $('#nok', box).textContent = orders.filter(o => o._ok && !o._off).length; };
-  cnt();
-  box.addEventListener('change', cnt); box.addEventListener('click', () => setTimeout(cnt));
-  $('#all', box).onclick = () => { orders.forEach(o => { if (!o._off) o._ok = true; }); drawResult(ctx); };
+  const draw = () => { ol.innerHTML = orders.map((o, i) => orderCard(o, i)).join(''); orders.forEach((o, i) => bindOrder(ol.querySelector(`.ocard[data-i="${i}"]`), o, i, cnt)); cnt(); };
+  draw();
+  $('#bulkpay', box).onchange = e => { const v = Number(e.target.value); if (!v) return; orders.forEach(o => { if (!o.payment_id && !o.anonymous && !o.exchange) o.payment_id = v; }); e.target.value = ''; draw(); toast('Ödemesi boş siparişlere uygulandı'); };
+  $('#all', box).onclick = () => { orders.forEach(o => { if (!o._off) o._ok = true; }); draw(); };
   $('#reset', box).onclick = () => { STATE.result = null; box.innerHTML = ''; };
-  $('#addo', box).onclick = () => { orders.push({ customer_name: '', phone: '', address: '', il: '', ilce: '', source_id: null, payment_id: null, note: '', flags: [], items: [{ description: '', qty: 1, unit_price: 0, warnings: [], confidence: 'low' }], _raw_index: null, _ok: false, source_ref: 'Elle eklendi' }); drawResult(ctx); };
+  $('#addo', box).onclick = () => { orders.push({ customer_name: '', phone: '', address: '', il: '', ilce: '', source_id: null, payment_id: null, note: '', flags: [], date: R.date || today(), items: [{ description: '', qty: 1, unit_price: 0, warnings: [], confidence: 'low' }], _raw_index: null, _ok: false, _open: true }); draw(); };
   $('#commit', box).onclick = async () => {
     const sel = orders.filter(o => o._ok && !o._off);
-    if (!sel.length) return toast('Kaydetmek için en az bir siparişi onaylayın.', true);
-    if (sel.some(o => !o.date && !R.date)) return toast('Tarihi olmayan sipariş var; sipariş kartındaki tarihi doldurun.', true);
+    if (!sel.length) return toast('Kaydetmek için siparişleri onaylayın.', true);
+    if (sel.some(o => !o.date && !R.date)) return toast('Tarihi olmayan sipariş var.', true);
     const unmatched = sel.flatMap(o => o.items).filter(it => !it.variant_id && it.description).length;
-    if (unmatched && !(await confirmBox(`${unmatched} ürün satırı katalogla eşleşmedi; serbest metin olarak kaydedilecek. Devam edilsin mi?`))) return;
-    const noLen = sel.flatMap(o => o.items).filter(it => it.is_band && !it.band_length_mm).length;
-    if (noLen && !(await confirmBox(`${noLen} şerit satırında boy (mm) yok. Metraj raporuna yansımaz. Devam edilsin mi?`))) return;
+    if (unmatched && !(await confirmBox(`${unmatched} ürün katalogla eşleşmedi; yazıldığı gibi kaydedilecek. Devam?`))) return;
     const btn = $('#commit', box); btn.disabled = true;
     try {
-      const r = await api.post('/auto/commit', { brand, date: R.date, batch_id: R.batch_id, prices_incl_vat: $('#incl', box).checked, orders: sel.map(o => ({ ...o, items: o.items.filter(it => it.description || it.variant_id) })) });
-      toast(`${r.invoice_ids.length} fatura oluşturuldu`);
+      const r = await api.post('/auto/commit', { brand, date: R.date, batch_id: R.batch_id, orders: sel.map(o => ({ ...o, items: o.items.filter(it => it.description || it.variant_id) })) });
+      toast(`${r.invoice_ids.length} satış kaydedildi`);
       try { const b2 = await api('/bootstrap'); S.boot.reps = b2.reps; } catch { }
       const rest = orders.filter(o => !(o._ok && !o._off));
-      if (rest.length) { R.orders = rest; drawResult(ctx); }
+      if (rest.some(o => !o._off)) { R.orders = rest; drawResult(ctx); }
       else { STATE = null; location.hash = `#/b/${brand}/faturalar?auto=${R.batch_id}`; }
     } catch (e) { toast(e.message, true); btn.disabled = false; }
   };
 }
 
-function issues(o) {
-  const out = [];
-  for (const f of o.flags || []) if (!(o.anonymous && ['customer_name', 'phone', 'address', 'il', 'ilce', 'payment'].includes(f))) out.push(f);
-  if (!o.anonymous && !phoneNorm(o.phone)) out.push('phone');
-  if (!o.source_id) out.push('source'); if (!o.payment_id && !o.anonymous && !o.is_official) out.push('payment');
-  if (!o.date) out.push('date');
-  if (o.il && !matchIl(o.il)) out.push('il'); if (o.ilce && o.il && !matchIlce(o.il, o.ilce)) out.push('ilce');
-  for (const it of o.items || []) if ((it.warnings || []).length || it.confidence !== 'ok') out.push('item');
-  if (o.duplicate || o.batch_duplicate_of !== undefined) out.push('dup');
-  return [...new Set(out)];
-}
-const fl = (o, k) => (o.anonymous && ['customer_name', 'phone', 'address', 'il', 'ilce', 'payment'].includes(k)) ? '' : ((o.flags || []).includes(k) || (k === 'date' && !o.date) || (k === 'phone' && !phoneNorm(o.phone)) || (k === 'source' && !o.source_id) || (k === 'payment' && !o.payment_id) || (k === 'il' && o.il && !matchIl(o.il)) || (k === 'ilce' && o.ilce && o.il && !matchIlce(o.il, o.ilce))) ? 'flag' : '';
-
 function orderCard(o, i) {
-  const iss = issues(o);
+  const miss = missing(o);
   const ex = o.existing_customer;
-  return `<div class="order ${o._ok ? 'ok' : ''} ${o._off ? 'dis' : ''}" data-i="${i}">
-    <div class="oh"><b>#${i + 1}</b><span class="muted small">${esc(o.source_ref || '')}</span>
-      ${o.anonymous ? '<span class="pill soft">MAĞAZA MÜŞTERİSİ (İSİMSİZ)</span>' : ex ? `<span class="badge-old">Kayıtlı müşteri · ${ex.orders + 1}. sipariş</span>` : (phoneNorm(o.phone) ? '<span class="badge-new">YENİ MÜŞTERİ</span>' : '')}${o.is_official ? '<span class="pill soft">RESMİ SATIŞ</span>' : ''}
-      ${o.duplicate ? `<span class="pill bad">Olası mükerrer: ${esc(o.duplicate.invoice_no)} aynı gün/müşteri/ürün</span>` : ''}
-      ${o.batch_duplicate_of !== undefined ? `<span class="pill bad">Bu partide #${o.batch_duplicate_of + 1} ile aynı</span>` : ''}
-      ${iss.length ? `<span class="pill warn">${iss.length} kontrol</span>` : '<span class="pill ok">Temiz</span>'}
-      <span class="sp"></span>
-      <label class="chk small"><input type="checkbox" data-a="off" ${o._off ? 'checked' : ''}> Atla</label>
-      <label class="chk"><input type="checkbox" data-a="ok" ${o._ok ? 'checked' : ''} ${o._off ? 'disabled' : ''}> <b>Onayla</b></label></div>
-    <div class="ob">
-      <div class="fgrid">
-        <label class="field ${fl(o, 'customer_name')}"><span>Ad Soyad</span><input class="in sm" data-k="customer_name" value="${esc(o.customer_name)}"></label>
-        <label class="field ${fl(o, 'phone')}"><span>Telefon</span><input class="in sm" data-k="phone" value="${esc(phoneNorm(o.phone) ? phoneFmt(o.phone) : o.phone)}"></label>
-        <label class="field ${fl(o, 'address')}"><span>Adres</span><input class="in sm" data-k="address" value="${esc(o.address)}"></label>
-        <label class="field ${fl(o, 'il')}"><span>İl</span><input class="in sm" data-k="il" value="${esc(o.il)}"></label>
-        <label class="field ${fl(o, 'ilce')}"><span>İlçe</span><input class="in sm" data-k="ilce" value="${esc(o.ilce)}"></label>
+  const rp = repById(o.rep_id); const src = srcById(o.source_id), pay = payById(o.payment_id);
+  const meta = [dmy(o.date), src ? src.name : null, pay ? pay.name : null, rp ? rp.name : (o.rep_raw ? o.rep_raw + ' (yeni)' : null), [o.ilce, o.il].filter(Boolean).join(' / ') || null].filter(Boolean);
+  const tags = [o.anonymous ? '<span class="pill soft">Mağaza · isimsiz</span>' : ex ? `<span class="badge-old">${ex.orders + 1}. sipariş</span>` : '', o.is_official ? '<span class="pill soft">Resmi</span>' : '', o.exchange ? '<span class="pill warn">Değişim — satış değil</span>' : '', o.duplicate ? `<span class="pill bad">Mükerrer: ${esc(o.duplicate.invoice_no)}</span>` : '', o.batch_duplicate_of !== undefined ? `<span class="pill bad">#${o.batch_duplicate_of + 1} ile aynı</span>` : ''].join('');
+  return `<div class="ocard ${o._ok && !o._off ? 'ok' : ''} ${o._off ? 'dis' : ''}" data-i="${i}">
+    <div class="top"><span class="num">${i + 1}</span>
+      <div class="who"><input data-k="customer_name" value="${esc(o.customer_name)}" placeholder="${o.anonymous ? 'Mağaza müşterisi (isimsiz)' : 'Ad soyad'}"><div class="meta">${meta.map(esc).join('<span class="dot"></span>')} ${tags}</div></div>
+      <div class="sum">${money(orderTotal(o))}${o.order_total != null && Math.abs(o.order_total - orderTotal(o)) > 1 ? `<small>mesajda ${money(o.order_total)}</small>` : ''}</div>
+      <div class="row" style="gap:6px"><label class="chk-ok ${o._ok && !o._off ? 'on' : ''}"><input type="checkbox" data-a="ok" ${o._ok ? 'checked' : ''}>${icon('check')} Onayla</label><button class="btn sm ghost icon" data-a="off" title="${o._off ? 'Geri al' : 'Atla'}">${icon(o._off ? 'history' : 'x')}</button></div></div>
+    <div class="items">${(o.items || []).map((it, j) => itemRow(it, j)).join('')}</div>
+    <div class="foot">${miss.map(k => `<button class="miss" data-open>${MISS_TR[k] || k}?</button>`).join('')}
+      <details ${o._open ? 'open' : ''}><summary>${icon('pen')} Detaylar</summary></details><button class="btn sm ghost" data-a="additem">+ Ürün</button></div>
+    <div class="detail ${o._open ? '' : 'hidden'}">
+      <div class="dgrid">
+        <label class="field"><span>Telefon</span><input class="in sm" data-k="phone" value="${esc(phoneNorm(o.phone) ? phoneFmt(o.phone) : o.phone)}"></label>
+        <label class="field"><span>İl</span><input class="in sm" data-k="il" value="${esc(o.il)}"></label>
+        <label class="field"><span>İlçe</span><input class="in sm" data-k="ilce" value="${esc(o.ilce)}"></label>
+        <label class="field"><span>Tarih</span><input class="in sm" type="date" data-k="date" value="${esc(o.date || R_DATE())}"></label>
+        <label class="field"><span>Kaynak</span><select class="in sm" data-k="source_id"><option value="">Seçin</option>${S.boot.sources.filter(s => s.active).map(s => `<option value="${s.id}" ${o.source_id === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></label>
+        <label class="field"><span>Ödeme</span><select class="in sm" data-k="payment_id"><option value="">Seçin</option>${S.boot.payments.filter(s => s.active).map(s => `<option value="${s.id}" ${o.payment_id === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></label>
+        <label class="field"><span>Temsilci</span><select class="in sm" data-k="rep_id"><option value="">${o.rep_raw && !o.rep_id ? `Yeni: ${esc(o.rep_raw)}` : 'Belirtilmemiş'}</option>${(S.boot.reps || []).filter(s => s.active).map(s => `<option value="${s.id}" ${o.rep_id === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></label>
+        <label class="field"><span>Resmi satış</span><select class="in sm" data-k="is_official"><option value="">Hayır</option><option value="1" ${o.is_official ? 'selected' : ''}>Evet</option></select></label>
+        <label class="field wide"><span>Adres</span><input class="in sm" data-k="address" value="${esc(o.address)}"></label>
+        <label class="field wide"><span>Not</span><input class="in sm" data-k="note" value="${esc(o.note || '')}"></label>
+        ${o.is_official ? `<label class="field wide"><span>Resmi unvan</span><input class="in sm" data-k="official_title" value="${esc(o.official_title || '')}"></label><label class="field"><span>VKN / TCKN</span><input class="in sm" data-k="tax_no" value="${esc(o.tax_no || '')}"></label><label class="field"><span>Vergi dairesi</span><input class="in sm" data-k="tax_office" value="${esc(o.tax_office || '')}"></label>` : ''}
       </div>
-      ${o.is_official ? `<div class="fgrid2"><label class="field"><span>Resmi unvan</span><input class="in sm" data-k="official_title" value="${esc(o.official_title || '')}"></label><label class="field"><span>VKN / TCKN</span><input class="in sm" data-k="tax_no" value="${esc(o.tax_no || '')}"></label><label class="field"><span>Vergi dairesi</span><input class="in sm" data-k="tax_office" value="${esc(o.tax_office || '')}"></label></div>` : ''}
-      <div class="fgrid">
-        <label class="field ${fl(o, 'date')}"><span>Satış tarihi</span><input class="in sm" type="date" data-k="date" value="${esc(o.date || R_DATE())}"></label>
-        <label class="field"><span>Satış temsilcisi</span><select class="in sm" data-k="rep_id"><option value="">${o.rep_raw && !o.rep_id ? `Yeni eklenecek: ${esc(o.rep_raw)}` : 'Belirtilmemiş'}</option>${(S.boot.reps || []).filter(s => s.active).map(s => `<option value="${s.id}" ${o.rep_id === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></label>
-        <label class="field" style="grid-column:span 3"><span>Mesajda temsilci</span><input class="in sm" data-k="rep_raw" value="${esc(o.rep_raw || '')}" placeholder="ör. M.cemal"></label>
-      </div>
-      <div class="fgrid2">
-        <label class="field ${fl(o, 'source')}"><span>Kaynak</span><select class="in sm" data-k="source_id"><option value="">Belirsiz — seçin</option>${S.boot.sources.filter(s => s.active).map(s => `<option value="${s.id}" ${o.source_id === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></label>
-        <label class="field ${fl(o, 'payment')}"><span>Ödeme yöntemi</span><select class="in sm" data-k="payment_id"><option value="">Belirsiz — seçin</option>${S.boot.payments.filter(s => s.active).map(s => `<option value="${s.id}" ${o.payment_id === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></label>
-        <label class="field"><span>Not</span><input class="in sm" data-k="note" value="${esc(o.note || '')}"></label>
-      </div>
-      <div style="display:grid;gap:8px">${(o.items || []).map((it, j) => itemRow(it, j)).join('')}</div>
-      <div class="row wrap"><button class="btn sm" data-a="additem">+ Ürün satırı</button>${o.order_total != null ? `<span class="muted small">Mesajdaki toplam: <b>${money(o.order_total)}</b> · Satırların toplamı: <b data-sum></b></span>` : `<span class="muted small">Satırların toplamı: <b data-sum></b></span>`}</div>
-      ${o.raw_text ? `<details><summary class="muted small" style="cursor:pointer">Mesaj metni</summary><div class="raw-msg">${esc(o.raw_text)}</div></details>` : ''}
+      ${o.raw_text ? `<div class="raw-msg">${esc(o.raw_text)}</div>` : ''}
     </div></div>`;
 }
 function itemRow(it, j) {
-  const warn = (it.warnings || []).length || it.confidence !== 'ok';
-  const alts = (it.alternatives || []).filter(a => a.variant_id !== it.variant_id);
-  return `<div class="itemrow ${warn ? 'warn' : ''}" data-j="${j}">
-    <div class="ac"><input class="in sm" data-ik="description" value="${esc(it.description)}" placeholder="Ürün ara / seç"></div>
-    <label class="field"><span class="small">Adet</span><input class="in sm ${it.qty_missing ? 'flag' : ''}" data-ik="qty" inputmode="decimal" value="${esc(numIn(it.qty))}"></label>
-    <label class="field ${it.is_band ? '' : 'hidden'}"><span class="small">Şerit boyu (mm)</span><input class="in sm ${it.is_band && !it.band_length_mm ? 'flag' : ''}" data-ik="band_length_mm" inputmode="decimal" value="${esc(numIn(it.band_length_mm))}"></label>
-    ${it.is_band ? '' : '<span></span>'}
-    <label class="field"><span class="small">Br. fiyat</span><input class="in sm ${!it.unit_price ? 'flag' : ''}" data-ik="unit_price" inputmode="decimal" value="${esc(numIn(it.unit_price))}"></label>
-    <label class="field"><span class="small">Satır toplamı</span><input class="in sm" data-ik="line_total" inputmode="decimal" value="${esc(numIn((Number(it.qty) || 0) * (Number(it.unit_price) || 0)))}"></label>
-    <button class="btn sm icon" data-a="rmitem" title="Satırı sil" style="align-self:end">${icon('x')}</button>
-    ${it.raw_text ? `<div class="raw">Mesajda: “${esc(it.raw_text)}”${it.is_band && it.band_length_mm ? ` · ${esc(numIn(it.band_length_mm * (it.qty || 0) / 1000))} m` : ''}</div>` : ''}
-    ${(it.warnings || []).length || alts.length ? `<div class="warns">${(it.warnings || []).map(w => `<span class="wmsg">${icon('warn')} ${esc(w)}</span>`).join('')}${alts.length ? `<select class="in sm" data-ik="alt" style="max-width:380px"><option value="">Diğer olası ürünler…</option>${alts.map(a => `<option value="${a.variant_id}">${esc(a.name)} — ${esc(a.label)}</option>`).join('')}</select>` : ''}</div>` : ''}
+  const warn = itemWarn(it);
+  const alts = (it.alternatives || []).filter(a => a.variant_id !== it.variant_id).slice(0, 5);
+  const w = (it.warnings || []).filter(x => !/Fiyat mesajda yok|Birim fiyat/.test(x) || !it.unit_price);
+  return `<div class="irow ${warn ? 'warn' : ''}" data-j="${j}">
+    <div class="ac"><input class="in" data-ik="description" value="${esc(it.description)}" placeholder="Ürün ara" title="${esc(it.raw_text || '')}"></div>
+    <input class="in" data-ik="qty" inputmode="decimal" value="${esc(numIn(it.qty))}" title="Adet">
+    <input class="in" data-ik="unit_price" inputmode="decimal" value="${esc(numIn(it.unit_price))}" placeholder="Fiyat" title="Birim fiyat">
+    <input class="in lt" data-ik="line_total" inputmode="decimal" value="${esc(numIn((Number(it.qty) || 0) * (Number(it.unit_price) || 0)))}" title="Satır toplamı">
+    <button class="x" data-a="rmitem" title="Sil">${icon('x')}</button>
+    ${it.is_band ? `<div class="ihint" style="color:var(--muted)">${icon('saw')} Boy <input class="in sm" data-ik="band_length_mm" inputmode="decimal" value="${esc(numIn(it.band_length_mm))}" style="width:90px;height:28px"> mm${it.band_length_mm ? ` · ${numIn(Math.round(it.band_length_mm * (it.qty || 0) / 10) / 100)} m` : ''}</div>` : ''}
+    ${warn && (w.length || alts.length) ? `<div class="ihint">${icon('warn')} <span>“${esc(it.raw_text || '')}”${w.length ? ' — ' + esc(w[0]) : ''}</span>${alts.length ? `<select class="in" data-ik="alt"><option value="">Doğru ürünü seç…</option>${alts.map(a => `<option value="${a.variant_id}">${esc(a.name)} — ${esc(a.label)}</option>`).join('')}</select>` : ''}</div>` : ''}
   </div>`;
 }
 
-function bindOrder(ctx, card, o, i) {
-  const redraw = () => { const n = document.createElement('div'); n.innerHTML = orderCard(o, i); const nc = n.firstElementChild; card.replaceWith(nc); bindOrder(ctx, nc, o, i); };
-  const sum = () => { const s = (o.items || []).reduce((a, it) => a + (Number(it.qty) || 0) * (Number(it.unit_price) || 0), 0); const b = card.querySelector('[data-sum]'); if (b) b.textContent = money(s); };
-  card.querySelector('[data-a=ok]').onchange = e => { o._ok = e.target.checked; card.classList.toggle('ok', o._ok); };
-  card.querySelector('[data-a=off]').onchange = e => { o._off = e.target.checked; if (o._off) o._ok = false; redraw(); };
+function bindOrder(card, o, i, cnt) {
+  const redraw = () => { const n = document.createElement('div'); n.innerHTML = orderCard(o, i); const nc = n.firstElementChild; card.replaceWith(nc); card = nc; bindOrder(nc, o, i, cnt); cnt(); };
+  card.querySelector('[data-a=ok]').onchange = e => { o._ok = e.target.checked; if (o._ok) o._off = false; redraw(); };
+  card.querySelector('[data-a=off]').onclick = () => { o._off = !o._off; if (o._off) o._ok = false; redraw(); };
+  const det = card.querySelector('details'), detail = card.querySelector('.detail');
+  det.addEventListener('toggle', () => { o._open = det.open; detail.classList.toggle('hidden', !det.open); });
+  $$('[data-open]', card).forEach(b => b.onclick = () => { det.open = true; });
   $$('[data-k]', card).forEach(inp => {
     inp.onchange = () => {
       const k = inp.dataset.k; let v = inp.value;
-      if (k === 'source_id' || k === 'payment_id' || k === 'rep_id') v = v ? Number(v) : null;
-      if (k === 'phone') { const n = phoneNorm(v); if (n) { v = n; inp.value = phoneFmt(n); } }
-      if (k === 'il') { const m = matchIl(v); if (m) { v = m; inp.value = m; } }
-      if (k === 'ilce') { const m = matchIlce(o.il, v); if (m) { v = m; inp.value = m; } }
-      o[k] = v; o.flags = (o.flags || []).filter(f => f !== { customer_name: 'customer_name', phone: 'phone', address: 'address', il: 'il', ilce: 'ilce', source_id: 'source', payment_id: 'payment' }[k] && !(k === 'phone' && f === 'phone_format'));
-      inp.closest('.field')?.classList.toggle('flag', !!fl(o, { source_id: 'source', payment_id: 'payment', customer_name: 'customer_name' }[k] || k));
+      if (['source_id', 'payment_id', 'rep_id'].includes(k)) v = v ? Number(v) : null;
+      if (k === 'is_official') v = !!v;
+      if (k === 'phone') { const n = phoneNorm(v); if (n) v = n; }
+      if (k === 'il') { const m = matchIl(v); if (m) v = m; }
+      if (k === 'ilce') { const m = matchIlce(o.il, v); if (m) v = m; }
+      if (k === 'customer_name' && v.trim()) o.anonymous = false;
+      o[k] = v;
+      if (k !== 'customer_name' && k !== 'note' && k !== 'address') redraw();
     };
   });
-  ilIlce(card.querySelector('[data-k=il]'), card.querySelector('[data-k=ilce]'));
-  $$('.itemrow', card).forEach(row => {
+  const il = card.querySelector('[data-k=il]'), ilce = card.querySelector('[data-k=ilce]'); if (il && ilce) ilIlce(il, ilce);
+  $$('.irow', card).forEach(row => {
     const it = o.items[+row.dataset.j];
     const d = row.querySelector('[data-ik=description]');
     const pick = v => { Object.assign(it, { variant_id: v.id, product_id: v.p.id, description: v.text, is_band: !!v.p.is_band, confidence: 'ok', warnings: (it.warnings || []).filter(w => !/eşleş|varyant|Marka|Freud/i.test(w)) }); if (!it.is_band) it.band_length_mm = null; redraw(); };
     autocomplete(d, q => searchCatalog(q, 40).map(v => ({ html: `<b>${esc(v.p.name)}</b> <small>${esc(v.label)}</small>`, group: `${v.p.category} › ${v.p.subcategory}`, v })), x => pick(x.v));
     d.oninput = () => { it.description = d.value; it.variant_id = null; it.product_id = null; };
     const alt = row.querySelector('[data-ik=alt]'); if (alt) alt.onchange = () => { const v = variantById(alt.value); if (v) pick(v); };
-    for (const k of ['qty', 'unit_price', 'band_length_mm']) { const x = row.querySelector(`[data-ik=${k}]`); if (x) x.oninput = () => { it[k] = parseNum(x.value); if (k === 'qty') it.qty_missing = false; x.classList.remove('flag'); row.querySelector('[data-ik=line_total]').value = numIn((Number(it.qty) || 0) * (Number(it.unit_price) || 0)); sum(); }; }
-    const lt = row.querySelector('[data-ik=line_total]'); lt.oninput = () => { const t = parseNum(lt.value); if (t != null && Number(it.qty)) { it.unit_price = +(t / Number(it.qty)).toFixed(4); row.querySelector('[data-ik=unit_price]').value = numIn(it.unit_price); } sum(); };
+    const upd = () => { const s = card.querySelector('.sum'); if (s) s.firstChild.textContent = money(orderTotal(o)); };
+    for (const k of ['qty', 'unit_price', 'band_length_mm']) { const x = row.querySelector(`[data-ik=${k}]`); if (x) x.oninput = () => { it[k] = parseNum(x.value); if (k === 'qty') it.qty_missing = false; row.querySelector('[data-ik=line_total]').value = numIn((Number(it.qty) || 0) * (Number(it.unit_price) || 0)); upd(); }; }
+    const lt = row.querySelector('[data-ik=line_total]'); lt.oninput = () => { const t = parseNum(lt.value); if (t != null && Number(it.qty)) { it.unit_price = +(t / Number(it.qty)).toFixed(4); row.querySelector('[data-ik=unit_price]').value = numIn(it.unit_price); } upd(); };
     row.querySelector('[data-a=rmitem]').onclick = () => { o.items.splice(+row.dataset.j, 1); redraw(); };
   });
   card.querySelector('[data-a=additem]').onclick = () => { o.items.push({ description: '', qty: 1, unit_price: 0, warnings: [], confidence: 'low' }); redraw(); };
-  sum();
 }
 
 async function history(ctx) {

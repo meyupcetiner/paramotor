@@ -11,10 +11,11 @@ const BRANDS = [
   { id: 'testere-fabrikasi', name: 'Testere Fabrikası', color: '#1b355b', logo: '/img/testere-fabrikasi.png', invoice_prefix: 'TF', sort: 3 }
 ];
 const SOURCES = [['Instagram', '#e1306c'], ['Facebook', '#1877f2'], ['WhatsApp', '#25d366'], ['Mağaza', '#3b5bdb']];
-const PAYMENTS = [['Havale', '#7c5cff'], ['Kapıda Nakit', '#f59f00'], ['Kapıda Kredi Kartı', '#e8590c']];
+const PAYMENTS = [['Havale', '#7c5cff'], ['Kapıda Nakit', '#f59f00'], ['Kapıda Kredi Kartı', '#e8590c'], ['Nakit', '#2f9e44'], ['Kredi Kartı', '#1c7ed6']];
+const REPS = [['M.Cemal', 'M.cemal, Cemal İnce, Cemal', '#54c810'], ['Doğan', 'Dogan, DOGAN, dogan', '#1c7ed6'], ['M.Arslan', 'M.arslan, Mustafa ARSLAN, Mustafa Arslan', '#f08c00']];
 export const DEFAULT_SETTINGS = {
-  default_vat: 20,
-  prices_incl_vat_default: true,
+  default_vat: 0,
+  prices_incl_vat_default: false,
   claude_model: 'claude-sonnet-5-5',
   auto_engine: 'claude',
   expense_allocation: 'ciro',
@@ -43,6 +44,19 @@ async function ensureDB(env) {
   await env.DB.exec("CREATE TABLE IF NOT EXISTS sales_reps (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, aliases TEXT, color TEXT, sort INTEGER DEFAULT 0, active INTEGER DEFAULT 1);");
   const cols = await all(env, "PRAGMA table_info(invoices)");
   if (!cols.some(c => c.name === 'rep_id')) await env.DB.exec('ALTER TABLE invoices ADD COLUMN rep_id INTEGER;');
+  // v2 göçü: KDV'siz varsayılan, yeni ödeme yöntemleri, temsilciler, hizmet ürünleri
+  const mg = await first(env, "SELECT value FROM settings WHERE key='migr_v2'");
+  if (!mg && await first(env, "SELECT COUNT(*) c FROM brands").then(r => r && r.c)) {
+    const pays = await all(env, 'SELECT name FROM payment_methods');
+    for (const [n, c] of PAYMENTS) if (!pays.some(x => x.name === n)) await run(env, 'INSERT INTO payment_methods (name,color,sort) VALUES (?,?,?)', n, c, 9);
+    const rc = await first(env, 'SELECT COUNT(*) c FROM sales_reps');
+    if (!rc || !rc.c) for (const [i, [n, a, c]] of REPS.entries()) await run(env, 'INSERT INTO sales_reps (name,aliases,color,sort) VALUES (?,?,?,?)', n, a, c, i);
+    await run(env, "INSERT INTO settings (key,value) VALUES ('default_vat','0') ON CONFLICT(key) DO UPDATE SET value='0'");
+    await run(env, "INSERT INTO settings (key,value) VALUES ('prices_incl_vat_default','false') ON CONFLICT(key) DO UPDATE SET value='false'");
+    const ex = await first(env, "SELECT COUNT(*) c FROM products WHERE category='Hizmetler'");
+    if (!ex.c) for (const p of expandCatalog().filter(p => p.category === 'Hizmetler')) { const r = await run(env, "INSERT INTO products (name,mfr,category,subcategory,unit,description,is_band,created_at) VALUES (?,?,?,?,'Adet',?,0,?)", p.name, p.mfr, p.category, p.subcategory, p.description, nowISO()); await run(env, "INSERT INTO variants (product_id,label,sort) VALUES (?,'Standart',0)", r.meta.last_row_id); }
+    await run(env, "INSERT INTO settings (key,value) VALUES ('migr_v2','1') ON CONFLICT(key) DO NOTHING");
+  }
   const b = await first(env, 'SELECT COUNT(*) c FROM brands');
   if (!b || !b.c) await seed(env);
   READY = true;
@@ -53,6 +67,8 @@ async function seed(env) {
   for (const b of BRANDS) lines.push(`INSERT OR IGNORE INTO brands (id,name,color,logo,invoice_prefix,sort) VALUES (${esc(b.id)},${esc(b.name)},${esc(b.color)},${esc(b.logo)},${esc(b.invoice_prefix)},${b.sort});`);
   SOURCES.forEach(([n, c], i) => lines.push(`INSERT INTO sources (name,color,sort) VALUES (${esc(n)},${esc(c)},${i});`));
   PAYMENTS.forEach(([n, c], i) => lines.push(`INSERT INTO payment_methods (name,color,sort) VALUES (${esc(n)},${esc(c)},${i});`));
+  REPS.forEach(([n, al, c], i) => lines.push(`INSERT INTO sales_reps (name,aliases,color,sort) VALUES (${esc(n)},${esc(al)},${esc(c)},${i});`));
+  lines.push("INSERT OR IGNORE INTO settings (key,value) VALUES ('migr_v2','1');");
   const now = nowISO();
   for (const p of expandCatalog()) {
     lines.push(`INSERT INTO products (id,name,mfr,category,subcategory,unit,description,is_band,band_type,created_at) VALUES (${p.key},${esc(p.name)},${esc(p.mfr)},${esc(p.category)},${esc(p.subcategory)},'Adet',${esc(p.description)},${p.is_band},${esc(p.band_type)},${esc(now)});`);
@@ -345,7 +361,7 @@ async function pnl(env, brand, from, to, settings) {
   const brands = brandFilter(brand);
   const sales = await all(env, `SELECT brand_id, substr(date,1,7) m, SUM(subtotal) net, SUM(total) gross, COUNT(*) n FROM invoices WHERE date>=? AND date<=? GROUP BY brand_id, m`, from, to);
   const exps = await all(env, 'SELECT * FROM expenses WHERE date>=? AND date<=? ORDER BY date DESC, id DESC', from, to);
-  const revByBrand = {}; for (const s of sales) revByBrand[s.brand_id] = (revByBrand[s.brand_id] || 0) + s.net;
+  const revByBrand = {}; for (const s of sales) revByBrand[s.brand_id] = (revByBrand[s.brand_id] || 0) + s.gross;
   const totalRev = Object.values(revByBrand).reduce((a, b) => a + b, 0);
   const mode = settings.expense_allocation || 'ciro';
   const manual = settings.expense_manual_shares || {};
@@ -358,7 +374,7 @@ async function pnl(env, brand, from, to, settings) {
     return totalRev ? (revByBrand[b] || 0) / totalRev : 1 / BRANDS.length;
   };
   const months = {};
-  for (const s of sales) if (brands.includes(s.brand_id)) { (months[s.m] ||= { income: 0, gross: 0, expense: 0, orders: 0 }); months[s.m].income += s.net; months[s.m].gross += s.gross; months[s.m].orders += s.n; }
+  for (const s of sales) if (brands.includes(s.brand_id)) { (months[s.m] ||= { income: 0, gross: 0, expense: 0, orders: 0 }); months[s.m].income += s.gross; months[s.m].gross += s.gross; months[s.m].orders += s.n; }
   const expRows = [];
   const byCat = {};
   for (const e of exps) {
@@ -586,7 +602,7 @@ async function api(req, env, url) {
       const famNames = [...new Set(cat.map(v => `${v.p.name} [${v.p.category} / ${v.p.subcategory}]`))];
       const r = await extractWithClaude(env, { text: b.text, images, sources: srcNames, payments: payNames, productNames: famNames, model: settings.claude_model });
       raw = r.orders; meta = { model: r.model, usage: r.usage };
-    } else raw = parseText(b.text, { sources: srcNames, payments: payNames });
+    } else raw = parseText(b.text, { sources: srcNames, payments: payNames, reps: L.reps });
     const orders = [];
     const srcId = n => (L.sources.find(s => s.name === n) || {}).id || null, payId = n => (L.payments.find(s => s.name === n) || {}).id || null;
     const repOf = raw => { if (!raw) return null; const k = fold(raw).replace(/[^a-z0-9]/g, ''); return L.reps.find(r => [r.name, ...String(r.aliases || '').split(',')].some(a => a.trim() && fold(a).replace(/[^a-z0-9]/g, '') === k)) || null; };
@@ -603,6 +619,7 @@ async function api(req, env, url) {
       const rep = repOf(o.rep);
       const items = (o.items || []).map(it => {
         const mt = matchItem({ ...it, raw_text: it.spec || it.raw_text }, cat);
+        if (mt.confidence === 'low') { mt.variant_id = null; mt.product_id = null; } // güvenle eşleşmeyen ürünü uydurma: mesajdaki metin kalır, öneriler listede
         const v = mt.variant_id ? cat.find(x => x.id === mt.variant_id) : null;
         const isBand = v ? !!v.p.is_band : it.kind === 'serit';
         const len = it.length_mm || mt.dims.length_mm || null;
@@ -611,12 +628,13 @@ async function api(req, env, url) {
         if (unit_price == null && it.line_total != null && qty) unit_price = +(it.line_total / qty).toFixed(4);
         const warn = [...mt.flags];
         if ((it.uncertain || []).includes('qty') || qty == null) warn.push('Adet mesajda net değil.');
+        if ((it.uncertain || []).includes('price_split')) warn.push('Mesajda tek toplam var; tutar ilk satıra yazıldı, diğerlerini dağıtın.');
         if (it.second_hand) warn.push('Çıkma (ikinci el) ürün — sıfır gibi kaydedilir, nota yazıldı.');
         if ((it.uncertain || []).includes('price_from_total')) warn.push('Birim fiyat sipariş toplamından hesaplandı.');
         if ((it.uncertain || []).includes('price_kind')) warn.push('Fiyatın birim mi satır toplamı mı olduğu net değil (toplam kabul edildi).');
         if (unit_price == null) warn.push('Fiyat mesajda yok.');
-        for (const u of (it.uncertain || [])) if (!['qty', 'price', 'price_from_total', 'price_kind'].includes(u)) warn.push(`Belirsiz: ${u}`);
-        return { raw_text: it.raw_text, product_id: mt.product_id, variant_id: mt.variant_id, description: v ? `${v.p.name} — ${v.label}` : (it.raw_text || ''), is_band: isBand, band_length_mm: isBand ? len : null, qty: qty ?? 1, qty_missing: qty == null, unit_price: unit_price ?? 0, confidence: mt.confidence, score: mt.score, alternatives: mt.alternatives, warnings: warn };
+        for (const u of (it.uncertain || [])) if (!['qty', 'price', 'price_from_total', 'price_kind', 'price_split'].includes(u)) warn.push(`Belirsiz: ${u}`);
+        return { raw_text: it.raw_text, note: it.note || '', product_id: mt.product_id, variant_id: mt.variant_id, description: v ? `${v.p.name}${v.label && v.label !== 'Standart' ? ' — ' + v.label : ''}` : (it.spec || it.raw_text || ''), is_band: isBand, band_length_mm: isBand ? len : null, qty: qty ?? 1, qty_missing: qty == null, unit_price: unit_price ?? 0, confidence: mt.confidence, score: mt.score, alternatives: mt.alternatives, warnings: warn };
       });
       // mükerrer kontrolü
       let duplicate = null;
@@ -627,7 +645,8 @@ async function api(req, env, url) {
           if (!items.length || items.some(it => ls.some(l => (it.variant_id && l.variant_id === it.variant_id) || fold(l.description) === fold(it.description)))) { duplicate = { id: d.id, invoice_no: d.invoice_no }; break; }
         }
       }
-      orders.push({ date: odate, rep_raw: o.rep || '', rep_id: rep ? rep.id : null, anonymous: !!o.anonymous, is_official: !!o.is_official, tax_no: o.tax_no || '', tax_office: o.tax_office || '', official_title: o.official_title || '', raw_text: o.raw_text || '', customer_name: o.customer_name || '', phone: np.ok ? np.phone : (o.phone || ''), address: o.address || '', il: o.il || '', ilce: o.ilce || '', source: o.source, source_id: srcId(o.source), payment: o.payment, payment_id: payId(o.payment), order_total: o.order_total ?? null, note, source_ref: o.source_ref || '', flags, existing_customer: existing, duplicate, items });
+      if (o.rep_from_sender && !rep) flags.push('rep_sender');
+      orders.push({ date: odate, exchange: !!o.exchange, vat_mode: o.vat_mode || null, rep_raw: o.rep || '', rep_id: rep ? rep.id : null, anonymous: !!o.anonymous, is_official: !!o.is_official, tax_no: o.tax_no || '', tax_office: o.tax_office || '', official_title: o.official_title || '', raw_text: o.raw_text || '', customer_name: o.customer_name || '', phone: np.ok ? np.phone : (o.phone || ''), address: o.address || '', il: o.il || '', ilce: o.ilce || '', source: o.source, source_id: srcId(o.source), payment: o.payment, payment_id: payId(o.payment), order_total: o.order_total ?? null, note, source_ref: o.source_ref || '', flags, existing_customer: existing, duplicate, items });
     }
     // aynı parti içinde mükerrer
     orders.forEach((o, i) => { for (let j = 0; j < i; j++) { const x = orders[j]; if (o.phone && o.phone === x.phone && JSON.stringify(o.items.map(t => t.variant_id || t.description).sort()) === JSON.stringify(x.items.map(t => t.variant_id || t.description).sort())) o.batch_duplicate_of = j; } });
@@ -659,9 +678,9 @@ async function api(req, env, url) {
     const batch = b.batch_id ? await first(env, 'SELECT * FROM auto_batches WHERE id=?', b.batch_id) : null;
     const ids = [];
     for (const o of b.orders || []) {
-      const inv = { brand: b.brand, date: o.date || b.date, auto_batch_id: b.batch_id || null, source_id: o.source_id || null, payment_id: o.payment_id || null, rep_id: o.rep_id || null, is_official: o.is_official ? 1 : 0, tax_no: o.tax_no, tax_office: o.tax_office, official_title: o.official_title, person_type: o.is_official ? 'tuzel' : null, prices_incl_vat: !!b.prices_incl_vat, note: o.note || null, title: o.customer_name || null,
+      const inv = { brand: b.brand, date: o.date || b.date, auto_batch_id: b.batch_id || null, source_id: o.source_id || null, payment_id: o.payment_id || null, rep_id: o.rep_id || null, is_official: o.is_official ? 1 : 0, tax_no: o.tax_no, tax_office: o.tax_office, official_title: o.official_title, person_type: o.is_official ? 'tuzel' : null, prices_incl_vat: o.vat_mode === 'incl' ? 1 : 0, note: o.note || null, title: o.customer_name || null,
         customer: { name: o.customer_name, phone: o.phone, address: o.address, il: o.il, ilce: o.ilce },
-        lines: (o.items || []).map(it => ({ product_id: it.product_id, variant_id: it.variant_id, description: it.description, qty: it.qty, unit_price: it.unit_price, band_length_mm: it.is_band ? it.band_length_mm : null, unit: 'Adet' })) };
+        lines: (o.items || []).map(it => ({ product_id: it.product_id, variant_id: it.variant_id, description: it.description, qty: it.qty, unit_price: it.unit_price, vat_rate: o.vat_mode ? 20 : 0, band_length_mm: it.is_band ? it.band_length_mm : null, unit: 'Adet' })) };
       ids.push(await saveInvoice(env, b.brand, inv, null, settings));
     }
     if (batch) {

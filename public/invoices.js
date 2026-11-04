@@ -37,7 +37,7 @@ export async function invoicesPage(ctx) {
   </tbody></table></div>
   <div class="footbar"><button class="btn sm" id="xcsv">${icon('download')} CSV</button><button class="btn sm" id="xxls">${icon('download')} Excel</button>
     <div class="pager"><button data-pg="${page - 1}" ${page <= 1 ? 'disabled' : ''}>‹</button>${pagerNums(page, pages).map(n => n === '…' ? '<button disabled>…</button>' : `<button data-pg="${n}" class="${n === page ? 'on' : ''}">${n}</button>`).join('')}<button data-pg="${page + 1}" ${page >= pages ? 'disabled' : ''}>›</button></div>
-    <span class="sp"></span><span class="sumtext">${int(d.summary.count)} Kayıt &nbsp; KDV hariç <b>${money(d.summary.subtotal)}</b> &nbsp; Toplam <b>${money(d.summary.total)}</b></span></div>`;
+    <span class="sp"></span><span class="sumtext">${int(d.summary.count)} Kayıt &nbsp; Toplam <b>${money(d.summary.total)}</b></span></div>`;
   const setQ = (k, v) => { const q = new URLSearchParams(query); if (v) q.set(k, v); else q.delete(k); if (k !== 'page') q.delete('page'); location.hash = `#/b/${brand}/faturalar?${q}`; };
   $('#fb', el).onclick = () => $('#fp', el).classList.toggle('hidden');
   let tm; $('#q', el).oninput = e => { clearTimeout(tm); tm = setTimeout(() => setQ('q', e.target.value.trim()), 350); };
@@ -107,8 +107,8 @@ export async function invoiceForm(ctx, id) {
       ${id ? `<div><button type="button" class="btn danger sm" id="del">${icon('trash')} Faturayı sil</button></div>` : ''}
     </aside></div>
     <div class="lines"><table><thead><tr><th style="width:44%">Hizmet / Ürün</th><th>Miktar</th><th>Birim</th><th>Br. Fiyat</th><th>Vergi</th><th style="text-align:right">Toplam</th><th></th></tr></thead><tbody id="lb"></tbody></table>
-      <div class="row wrap" style="padding:10px 16px 4px"><button type="button" class="btn up sm" id="addl">+ Yeni Satır Ekle</button><span class="sp"></span><label class="chk small"><input type="checkbox" name="prices_incl_vat" ${inv.prices_incl_vat ? 'checked' : ''}> Girilen fiyatlar KDV dahil</label></div>
-      <div class="totals"><table><tr><td>Ara Toplam</td><td id="t1"></td></tr><tr><td>Toplam KDV</td><td id="t2"></td></tr><tr class="grand"><td>Genel Toplam</td><td id="t3"></td></tr></table></div>
+      <div class="row wrap" style="padding:10px 16px 4px"><button type="button" class="btn up sm" id="addl">+ Yeni Satır Ekle</button><span class="sp"></span><label class="chk small muted" title="Sadece KDV'li (resmi) satışlarda"><input type="checkbox" name="prices_incl_vat" ${inv.prices_incl_vat ? 'checked' : ''}> Fiyatlar KDV dahil</label></div>
+      <div class="totals"><table><tr><td>Ara Toplam</td><td id="t1"></td></tr><tr id="t2r"><td>Toplam KDV</td><td id="t2"></td></tr><tr class="grand"><td>Genel Toplam</td><td id="t3"></td></tr></table></div>
     </div></form>`;
 
   const f = $('#f', el);
@@ -197,7 +197,7 @@ export async function invoiceForm(ctx, id) {
       const td = lb.querySelector(`tr.line[data-i="${i}"] [data-tot]`); if (td) td.innerHTML = moneyHtml(incl ? net * (1 + r / 100) : net);
       const m = lb.querySelector(`tr.band[data-i="${i}"] [data-m]`); if (m) m.textContent = l.band_length_mm ? `${String(Math.round(l.band_length_mm * q / 10) / 100).replace('.', ',')} m` : '— m';
     });
-    $('#t1', el).innerHTML = moneyHtml(sub); $('#t2', el).innerHTML = moneyHtml(vat); $('#t3', el).innerHTML = moneyHtml(sub + vat);
+    $('#t1', el).innerHTML = moneyHtml(sub); $('#t2', el).innerHTML = moneyHtml(vat); $('#t2r', el).style.display = vat > 0 ? '' : 'none'; $('#t3', el).innerHTML = moneyHtml(sub + vat);
   };
   f.prices_incl_vat.onchange = calc;
   $('#addl', el).onclick = () => { inv.lines.push(blankLine()); drawLines(); lb.querySelector(`tr.line[data-i="${inv.lines.length - 1}"] [data-k=description]`).focus(); };

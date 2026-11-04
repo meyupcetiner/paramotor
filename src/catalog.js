@@ -8,7 +8,8 @@ const D = 'Daire Testereler', S = 'Şerit Testereler', O = 'Diğer Ürünler';
 export const CATEGORIES = {
   [D]: ['Ahşap', 'MDF-Suntalam', 'Alüminyum-PVC', 'Metal', 'Betopan'],
   [S]: ['Karbon', 'Et-Kemik', 'Ahşap', 'Bimetal', 'Carbide', 'Kağıt-Sünger'],
-  [O]: ['El Testeresi', 'Planya Bıçağı', 'Endüstriyel Bıçak']
+  [O]: ['El Testeresi', 'Planya Bıçağı', 'Endüstriyel Bıçak', 'Makine', 'Diğer'],
+  ['Hizmetler']: ['Bileme', 'Kaynak', 'Tamir']
 };
 
 // t: tip -> 'circ' (çap,kalınlık,delik,diş) | 'circ3' (çap,kalınlık,delik) | 'band' (gen,kal,tpi) | 'band2' (gen,kal) | 'band3' (gen,kal,diş tipi) | 'len' (uzunluk,genişlik,kalınlık) | 'hand' (uzunluk,diş) | 'single'
@@ -70,7 +71,12 @@ export const FAMILIES = [
   { name: 'Schuster Dalgalı Şerit (Kağıt/Sünger)', mfr: 'Schuster', cat: S, sub: 'Kağıt-Sünger', t: 'band2', bandType: 'kağıt-sünger', desc: 'Dalgalı ağız.', rows: [[15,0.45],[20,0.45],[25,0.45],[30,0.45]] },
   { name: 'Schuster Sivri Dişli Dalgalı Şerit (Kağıt/Sünger)', mfr: 'Schuster', cat: S, sub: 'Kağıt-Sünger', t: 'band2', bandType: 'kağıt-sünger', desc: 'Sivri dişli dalgalı ağız.', rows: [[10,0.45],[15,0.45],[20,0.45]] },
   // ---------------- Testeresan imalat ----------------
-  { name: 'Testeresan Endüstriyel Bıçak (Özel İmalat)', mfr: 'Testeresan', cat: O, sub: 'Endüstriyel Bıçak', t: 'single', desc: 'CNC ile özel ölçü imalat bıçaklar. Ölçü satırda açıklamaya yazılır.', rows: [[]] }
+  { name: 'Testeresan Endüstriyel Bıçak (Özel İmalat)', mfr: 'Testeresan', cat: O, sub: 'Endüstriyel Bıçak', t: 'single', desc: 'CNC ile özel ölçü imalat bıçaklar. Ölçü satırda açıklamaya yazılır.', rows: [[]] },
+  // hizmetler (WhatsApp geçmişindeki satışlardan)
+  { name: 'HSS Freze Bileme', mfr: 'Testeresan', cat: 'Hizmetler', sub: 'Bileme', t: 'single', desc: 'HSS freze / daire testere bileme hizmeti (adet başı).', rows: [[]] },
+  { name: 'Dry Cut / TCT Testere Bileme', mfr: 'Testeresan', cat: 'Hizmetler', sub: 'Bileme', t: 'single', desc: 'Elmas (TCT) ve Dry Cut daire testere bileme, tamir dahil.', rows: [[]] },
+  { name: 'Şerit Kaynak', mfr: 'Testeresan', cat: 'Hizmetler', sub: 'Kaynak', t: 'single', desc: 'Şerit testere kesim ve kaynak hizmeti.', rows: [[]] },
+  { name: 'Testere Tamir', mfr: 'Testeresan', cat: 'Hizmetler', sub: 'Tamir', t: 'single', desc: 'Testere tamir / diş değişimi.', rows: [[]] }
 ];
 
 const num = v => (v === null || v === undefined) ? '' : String(v).replace('.', ',');

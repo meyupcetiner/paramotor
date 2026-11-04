@@ -21,7 +21,7 @@ const SUB_WORDS = [
   ['Ahşap', /\b(ahsap|agac|odun|kereste|tomruk|ahşap|marangoz|sharper|kontrplak|plywood)/]
 ];
 const BRANDS = ['kronberg', 'onci', 'glg', 'krabbe', 'junior', 'schuster', 'flamex', 'testeresan'];
-const LINES = ['multicut', 'probeam', 'durocut', 'powercut', 'flexback', 'signier', 'performer', 'steelmaster', 'woodmaster', 'slender', 'sharper', 'bonemaster', 'antifric', 'white', 'tialn', 'tin', 'cermet', 'kuyumcu', 'freze', 'portatif', 'cizici', 'friksiyon', 'vario', 'atlamali', 'dry cut', 'paslanmaz', 'planya', 'gaz beton'];
+const LINES = ['freze bileme', 'hss freze', 'drycut bileme', 'dry cut bileme', 'kaynak', 'tamir', 'multicut', 'probeam', 'durocut', 'powercut', 'flexback', 'signier', 'performer', 'steelmaster', 'woodmaster', 'slender', 'sharper', 'bonemaster', 'antifric', 'white', 'tialn', 'tin', 'cermet', 'kuyumcu', 'freze', 'portatif', 'cizici', 'friksiyon', 'vario', 'atlamali', 'dry cut', 'paslanmaz', 'planya', 'gaz beton'];
 
 function numbersIn(t) {
   return (t.match(/\d+(?:[.,]\d+)?/g) || []).map(x => parseFloat(x.replace(',', '.')));
@@ -70,12 +70,15 @@ export function matchItem(item, catalog) {
   const raw = [item.raw_text, item.product_hint, item.brand_hint].filter(Boolean).join(' ');
   const t = fold(raw).replace(/dry\s*-?\s*cut/g, 'dry cut').replace(/kuru\s*kesim/g, 'dry cut');
   const dims = { ...extractDims(item.raw_text || ''), ...strip(item) };
+  if (dims.width && dims.teeth != null && !dims.tpi && !dims.diameter) { dims.tpi = String(dims.teeth); delete dims.teeth; } // şeritte "14z" = 14 TPI
   let kind = item.kind && item.kind !== 'belirsiz' ? item.kind : null;
+  if (item.service) kind = 'hizmet';
   if (!kind) kind = (/serit|şerit/.test(t) || dims.width || dims.length_mm) ? 'serit' : (dims.diameter ? 'daire' : null);
   const subs = SUB_WORDS.filter(([, re]) => re.test(t)).map(([s]) => s);
   const brand = BRANDS.find(b => t.includes(b)) || (item.brand_hint ? BRANDS.find(b => fold(item.brand_hint).includes(b)) : null);
   const lines = LINES.filter(l => t.includes(l));
   const freud = /fr[eo]u?d|fırud|front/.test(t);
+  const words = [...new Set(t.split(/[^a-z0-9]+/).filter(w => w.length >= 3 && !/^\d/.test(w) && !['adet', 'serit', 'testere', 'mm', 'tpi', 'dis'].includes(w)))];
 
   const scored = [];
   for (const v of catalog) {
@@ -84,6 +87,8 @@ export function matchItem(item, catalog) {
     if (kind === 'serit' && !isBand) s -= 60;
     if (kind === 'daire' && isBand) s -= 60;
     if (kind === 'diger' && p.category !== 'Diğer Ürünler') s -= 30;
+    if (kind === 'hizmet') { if (p.category !== 'Hizmetler') s -= 200; else s += 30; }
+    else if (p.category === 'Hizmetler') s -= 80;
     const pname = fold(p.name + ' ' + p.subcategory + ' ' + p.mfr);
     if (subs.length) {
       const hit = subs.some(x => x === p.subcategory || (x === 'Ahşap' && isBand && p.subcategory === 'Karbon'));
@@ -92,6 +97,8 @@ export function matchItem(item, catalog) {
     }
     if (brand) { if (fold(p.mfr) === brand) { s += 20; why.push('marka'); } else s -= 25; }
     for (const l of lines) if (pname.includes(l)) { s += 15; why.push(l); }
+    for (const w of words) if (pname.includes(w)) s += 4; else if (/^(pro|vario|tin|tialn|white|antifric)$/.test(w)) s -= 0; 
+    if (!words.includes('pro') && /\bpro\b/.test(pname)) s -= 3; if (!words.includes('vario') && /vario/.test(pname)) s -= 3;
     if (dims.diameter != null) { if (eqNum(v.diameter, dims.diameter, 0.5)) { s += 40; why.push('çap'); } else if (v.diameter != null) s -= 45; else s -= 20; }
     if (dims.teeth != null) { if (v.teeth != null && Number(v.teeth) === Number(dims.teeth)) { s += 25; why.push('diş'); } else if (v.teeth != null) s -= 20; }
     if (dims.thickness != null) { if (eqNum(v.thickness, dims.thickness, 0.051)) { s += 12; why.push('kalınlık'); } else if (v.thickness != null) s -= 8; }

@@ -105,6 +105,7 @@ export function confirmBox(msg) { return new Promise(res => modal({ title: 'Onay
 export const pill = (name, color) => `<span class="pill" style="background:${esc(color || '#777')}">${esc(trUpper(name))}</span>`;
 export const srcById = id => S.boot.sources.find(s => s.id === Number(id));
 export const payById = id => S.boot.payments.find(s => s.id === Number(id));
+export const repById = id => (S.boot.reps || []).find(s => s.id === Number(id));
 export const brandById = id => S.boot.brands.find(b => b.id === id);
 
 // ---------- katalog araması ----------
@@ -154,17 +155,20 @@ export function autocomplete(input, getItems, onPick, { minLen = 0 } = {}) {
 
 // Kaynak / ödeme etiketi seçici (Paraşüt "Fatura Kategorisi" tarzı)
 export function tagPicker(el, { kind, value, onChange, flag = false }) {
-  const list = () => (kind === 'source' ? S.boot.sources : S.boot.payments).filter(x => x.active || x.id === Number(value));
+  const LIST = { source: () => S.boot.sources, payment: () => S.boot.payments, rep: () => S.boot.reps || [] };
+  const EP = { source: '/sources', payment: '/payments', rep: '/reps' };
+  const LBL = { source: 'KAYNAK SEÇİN', payment: 'ÖDEME SEÇİN', rep: 'TEMSİLCİ SEÇİN' };
+  const list = () => LIST[kind]().filter(x => x.active || x.id === Number(value));
   const draw = () => {
     const cur = list().find(x => x.id === Number(value));
     el.className = 'picker';
-    el.innerHTML = `<div class="cur ${flag && !cur ? 'flag' : ''}" tabindex="0">${cur ? pill(cur.name, cur.color) : `<span class="pill out">${kind === 'source' ? 'KAYNAK SEÇİN' : 'ÖDEME SEÇİN'}</span>`}<span class="muted">▾</span></div>`;
+    el.innerHTML = `<div class="cur ${flag && !cur ? 'flag' : ''}" tabindex="0">${cur ? pill(cur.name, cur.color) : `<span class="pill out">${LBL[kind]}</span>`}<span class="muted">▾</span></div>`;
     el.querySelector('.cur').onclick = open;
   };
   const open = () => {
     if (el.querySelector('.menu')) return;
     const m = document.createElement('div'); m.className = 'menu';
-    m.innerHTML = `<input class="in sm" placeholder="Ara">` + `<div class="opts"></div><div class="o" data-new>${pill('YENİ EKLE', 'var(--surface-3)')}</div><div class="hint">${kind === 'source' ? 'Siparişin geldiği yer. Ayarlar › Kaynaklar\'dan düzenlenir.' : 'Ödeme yöntemi. Ayarlar › Ödeme Yöntemleri\'nden düzenlenir.'}</div>`;
+    m.innerHTML = `<input class="in sm" placeholder="Ara">` + `<div class="opts"></div><div class="o" data-new>${pill('YENİ EKLE', 'var(--surface-3)')}</div><div class="hint">${kind === 'source' ? 'Siparişin geldiği yer.' : kind === 'rep' ? 'Satışı yapan temsilci (müşteri değil).' : 'Ödeme yöntemi.'} Ayarlar › Kaynak, Ödeme ve Temsilciler'den düzenlenir.</div>`;
     const opts = m.querySelector('.opts');
     const fill = q => { opts.innerHTML = `<div class="o" data-id="">${'<span class="pill out">BELİRSİZ</span>'}</div>` + list().filter(x => fold(x.name).includes(fold(q))).map(x => `<div class="o" data-id="${x.id}">${pill(x.name, x.color)}</div>`).join(''); };
     fill('');
@@ -173,10 +177,10 @@ export function tagPicker(el, { kind, value, onChange, flag = false }) {
     m.onclick = async e => {
       const o = e.target.closest('.o'); if (!o) return;
       if (o.hasAttribute('data-new')) {
-        const name = inp.value.trim() || prompt(kind === 'source' ? 'Yeni kaynak adı' : 'Yeni ödeme yöntemi adı'); if (!name) return;
+        const name = inp.value.trim() || prompt({ source: 'Yeni kaynak adı', payment: 'Yeni ödeme yöntemi adı', rep: 'Yeni satış temsilcisi adı' }[kind]); if (!name) return;
         const colors = ['#e8590c', '#0ca678', '#7048e8', '#1c7ed6', '#d6336c', '#f08c00'];
-        const r = await api.post(kind === 'source' ? '/sources' : '/payments', { name, color: colors[Math.floor(Math.random() * colors.length)] });
-        const b = await api('/bootstrap'); S.boot.sources = b.sources; S.boot.payments = b.payments;
+        const r = await api.post(EP[kind], { name, color: colors[Math.floor(Math.random() * colors.length)] });
+        const b = await api('/bootstrap'); S.boot.sources = b.sources; S.boot.payments = b.payments; S.boot.reps = b.reps;
         value = r.id;
       } else value = o.dataset.id ? Number(o.dataset.id) : null;
       onChange(value); close(); draw();

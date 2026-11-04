@@ -1,9 +1,9 @@
 // Satış Faturaları listesi + Yeni/Düzenle fatura formu (Paraşüt düzeni, istenen değişikliklerle)
-import { S, api, esc, $, $$, icon, toast, money, moneyHtml, int, dmy, today, parseNum, numIn, phoneFmt, phoneNorm, pill, srcById, payById, brandById, loadCatalog, searchCatalog, variantById, autocomplete, tagPicker, ilIlce, matchIl, matchIlce, confirmBox, exportCSV, exportXLS, fold, rangePreset } from './core.js';
+import { S, api, esc, $, $$, icon, toast, money, moneyHtml, int, dmy, today, parseNum, numIn, phoneFmt, phoneNorm, pill, srcById, payById, repById, brandById, loadCatalog, searchCatalog, variantById, autocomplete, tagPicker, ilIlce, matchIl, matchIlce, confirmBox, exportCSV, exportXLS, fold, rangePreset } from './core.js';
 import { setTitle } from './app.js';
 
-const FILTER_KEYS = ['from', 'to', 'source', 'payment', 'official', 'il', 'ilce', 'product', 'category', 'customer', 'first', 'auto'];
-const LABELS = { from: 'Başlangıç', to: 'Bitiş', source: 'Kaynak', payment: 'Ödeme', official: 'Resmi', il: 'İl', ilce: 'İlçe', product: 'Ürün', category: 'Kategori', customer: 'Müşteri', first: 'Müşteri tipi', auto: 'Otomatik parti' };
+const FILTER_KEYS = ['from', 'to', 'source', 'payment', 'rep', 'official', 'il', 'ilce', 'product', 'category', 'customer', 'first', 'auto'];
+const LABELS = { from: 'Başlangıç', to: 'Bitiş', source: 'Kaynak', payment: 'Ödeme', rep: 'Temsilci', official: 'Resmi', il: 'İl', ilce: 'İlçe', product: 'Ürün', category: 'Kategori', customer: 'Müşteri', first: 'Müşteri tipi', auto: 'Otomatik parti' };
 
 export async function invoicesPage(ctx) {
   const { brand, query, el } = ctx;
@@ -12,7 +12,7 @@ export async function invoicesPage(ctx) {
   const qs = new URLSearchParams(query); qs.set('brand', brand); qs.set('page', page); qs.set('per', 25);
   const [d] = await Promise.all([api('/invoices?' + qs), loadCatalog()]);
   const active = FILTER_KEYS.filter(k => query.get(k));
-  const chipVal = k => { const v = query.get(k); if (k === 'source') return v.split(',').map(x => x === 'none' ? 'Belirsiz' : (srcById(x) || {}).name).join(', '); if (k === 'payment') return v.split(',').map(x => x === 'none' ? 'Belirsiz' : (payById(x) || {}).name).join(', '); if (k === 'official') return v === '1' ? 'Resmi' : 'Gayriresmi'; if (k === 'first') return v === '1' ? 'İlk sipariş (yeni)' : 'Tekrar sipariş'; if (k === 'product') { const p = S.catalog.find(x => x.id === Number(v)); return p ? p.name : v; } if (k === 'from' || k === 'to') return dmy(v); return v; };
+  const chipVal = k => { const v = query.get(k); if (k === 'source') return v.split(',').map(x => x === 'none' ? 'Belirsiz' : (srcById(x) || {}).name).join(', '); if (k === 'payment') return v.split(',').map(x => x === 'none' ? 'Belirsiz' : (payById(x) || {}).name).join(', '); if (k === 'rep') return v.split(',').map(x => x === 'none' ? 'Belirtilmemiş' : (repById(x) || {}).name).join(', '); if (k === 'official') return v === '1' ? 'Resmi' : 'Gayriresmi'; if (k === 'first') return v === '1' ? 'İlk sipariş (yeni)' : 'Tekrar sipariş'; if (k === 'product') { const p = S.catalog.find(x => x.id === Number(v)); return p ? p.name : v; } if (k === 'from' || k === 'to') return dmy(v); return v; };
   const pages = Math.max(1, Math.ceil(d.summary.count / d.per));
   el.innerHTML = `
   <div class="toolbar">
@@ -25,12 +25,13 @@ export async function invoicesPage(ctx) {
     <div class="field"><span>Hazır aralık</span><select class="in sm" id="preset"><option value="">Seçin</option><option value="today">Bugün</option><option value="week">Bu hafta</option><option value="month">Bu ay</option><option value="lastmonth">Geçen ay</option><option value="90">Son 90 gün</option><option value="year">Bu yıl</option></select></div>
     <div class="field"><span>Kaynak</span><select class="in sm" data-f="source"><option value="">Tümü</option>${S.boot.sources.map(s => `<option value="${s.id}" ${query.get('source') === String(s.id) ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}<option value="none" ${query.get('source') === 'none' ? 'selected' : ''}>Belirsiz</option></select></div>
     <div class="field"><span>Ödeme yöntemi</span><select class="in sm" data-f="payment"><option value="">Tümü</option>${S.boot.payments.map(s => `<option value="${s.id}" ${query.get('payment') === String(s.id) ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}<option value="none" ${query.get('payment') === 'none' ? 'selected' : ''}>Belirsiz</option></select></div>
+    <div class="field"><span>Satış temsilcisi</span><select class="in sm" data-f="rep"><option value="">Tümü</option>${(S.boot.reps || []).map(s => `<option value="${s.id}" ${query.get('rep') === String(s.id) ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}<option value="none" ${query.get('rep') === 'none' ? 'selected' : ''}>Belirtilmemiş</option></select></div>
     <div class="field"><span>Resmi / gayriresmi</span><select class="in sm" data-f="official"><option value="">Tümü</option><option value="1" ${query.get('official') === '1' ? 'selected' : ''}>Resmi satış</option><option value="0" ${query.get('official') === '0' ? 'selected' : ''}>Gayriresmi</option></select></div>
     <div class="field"><span>İl</span><input class="in sm" data-f="il" value="${esc(query.get('il') || '')}" placeholder="ör. İstanbul"></div>
   </div><div class="row" style="padding:0 16px 14px"><span class="sp"></span><button class="btn sm" id="clr">Filtreleri temizle</button></div></div>
   ${active.length ? `<div class="chips">${active.map(k => `<span class="chip on" data-rm="${k}">${LABELS[k]}: ${esc(chipVal(k))} ✕</span>`).join('')}</div>` : ''}
   <div class="tbl-wrap"><table class="tbl list"><thead><tr><th>Fatura ismi / müşteri</th><th>Ürünler</th><th>Düzenleme tarihi</th><th>Fatura no</th><th class="r">Toplam</th></tr></thead><tbody>
-  ${d.invoices.length ? d.invoices.map(i => { const s = srcById(i.source_id), p = payById(i.payment_id); return `<tr class="click" data-id="${i.id}"><td><div class="t-title">${esc(i.title || i.cust_name || 'İsimsiz')}</div><div class="t-sub">${esc(phoneFmt(i.cust_phone))}${i.cust_il ? ' · ' + esc([i.cust_ilce, i.cust_il].filter(Boolean).join(' / ')) : ''}</div><div class="tags">${s ? pill(s.name, s.color) : '<span class="pill out">KAYNAK?</span>'}${p ? pill(p.name, p.color) : '<span class="pill out">ÖDEME?</span>'}${i.is_official ? '<span class="pill soft">RESMİ</span>' : ''}${i.auto_batch_id ? `<span class="pill soft" title="Otomatik girildi">${icon('spark')}</span>` : ''}</div></td>
+  ${d.invoices.length ? d.invoices.map(i => { const s = srcById(i.source_id), p = payById(i.payment_id), rp = repById(i.rep_id); return `<tr class="click" data-id="${i.id}"><td><div class="t-title">${esc(i.title || i.cust_name || 'Mağaza müşterisi (isimsiz)')}</div><div class="t-sub">${esc(phoneFmt(i.cust_phone))}${i.cust_il ? ' · ' + esc([i.cust_ilce, i.cust_il].filter(Boolean).join(' / ')) : ''}</div><div class="tags">${s ? pill(s.name, s.color) : '<span class="pill out">KAYNAK?</span>'}${p ? pill(p.name, p.color) : '<span class="pill out">ÖDEME?</span>'}${rp ? `<span class="pill soft">${icon('user')} ${esc(rp.name)}</span>` : ''}${i.is_official ? '<span class="pill soft">RESMİ</span>' : ''}${i.auto_batch_id ? `<span class="pill soft" title="Otomatik girildi">${icon('spark')}</span>` : ''}</div></td>
       <td class="t-sub" style="max-width:340px">${esc(i.lines.map(l => (l.qty !== 1 ? int(l.qty) + '× ' : '') + l.description + (l.band_length_mm ? ` (${int(l.band_length_mm)} mm)` : '')).join(' · ').slice(0, 160))}</td>
       <td>${dmy(i.date)}</td><td class="t-sub">${esc(i.invoice_no || '')}</td><td class="r">${moneyHtml(i.total)}</td></tr>`; }).join('') : `<tr><td colspan="5"><div class="empty">Kayıt bulunamadı. <a href="#/b/${brand}/fatura/yeni">Yeni satış oluşturun</a> veya <a href="#/b/${brand}/otomatik">otomatik girin</a>.</div></td></tr>`}
   </tbody></table></div>
@@ -46,8 +47,8 @@ export async function invoicesPage(ctx) {
   $$('[data-rm]', el).forEach(c => c.onclick = () => setQ(c.dataset.rm, ''));
   $$('tr[data-id]', el).forEach(tr => tr.onclick = () => { location.hash = `#/b/${brand}/fatura/${tr.dataset.id}`; });
   $$('[data-pg]', el).forEach(b => b.onclick = () => setQ('page', b.dataset.pg));
-  const exportRows = async () => { const q = new URLSearchParams(qs); q.set('per', 500); const all = []; for (let pg = 1; ; pg++) { q.set('page', pg); const r = await api('/invoices?' + q); all.push(...r.invoices); if (all.length >= r.summary.count || !r.invoices.length) break; } return all.map(i => [dmy(i.date), i.invoice_no || '', i.title || '', i.cust_name || '', phoneFmt(i.cust_phone), i.cust_il || '', i.cust_ilce || '', (srcById(i.source_id) || {}).name || 'Belirsiz', (payById(i.payment_id) || {}).name || 'Belirsiz', i.is_official ? 'Resmi' : 'Gayriresmi', i.lines.map(l => `${l.qty}× ${l.description}${l.band_length_mm ? ` (${l.band_length_mm} mm)` : ''}`).join(' | '), i.subtotal, i.vat_total, i.total]); };
-  const H = ['Tarih', 'Fatura No', 'Fatura İsmi', 'Müşteri', 'Telefon', 'İl', 'İlçe', 'Kaynak', 'Ödeme', 'Resmi', 'Ürünler', 'KDV Hariç', 'KDV', 'Toplam'];
+  const exportRows = async () => { const q = new URLSearchParams(qs); q.set('per', 500); const all = []; for (let pg = 1; ; pg++) { q.set('page', pg); const r = await api('/invoices?' + q); all.push(...r.invoices); if (all.length >= r.summary.count || !r.invoices.length) break; } return all.map(i => [dmy(i.date), i.invoice_no || '', i.title || '', i.cust_name || '', phoneFmt(i.cust_phone), i.cust_il || '', i.cust_ilce || '', (srcById(i.source_id) || {}).name || 'Belirsiz', (payById(i.payment_id) || {}).name || 'Belirsiz', (repById(i.rep_id) || {}).name || '', i.is_official ? 'Resmi' : 'Gayriresmi', i.lines.map(l => `${l.qty}× ${l.description}${l.band_length_mm ? ` (${l.band_length_mm} mm)` : ''}`).join(' | '), i.subtotal, i.vat_total, i.total]); };
+  const H = ['Tarih', 'Fatura No', 'Fatura İsmi', 'Müşteri', 'Telefon', 'İl', 'İlçe', 'Kaynak', 'Ödeme', 'Temsilci', 'Resmi', 'Ürünler', 'KDV Hariç', 'KDV', 'Toplam'];
   $('#xcsv', el).onclick = async () => exportCSV(`satislar-${brand}-${today()}`, H, await exportRows());
   $('#xxls', el).onclick = async () => exportXLS(`satislar-${brand}-${today()}`, [{ name: 'Satış Faturaları', headers: H, rows: await exportRows() }]);
 }
@@ -67,7 +68,7 @@ export async function invoiceForm(ctx, id) {
     setTitle(`<span class="crumb"><a href="#/b/${brand}/faturalar">Satış Faturaları</a> › </span>${esc(d.invoice_no || 'Fatura')}`);
   } else {
     let pre = null; if (ctx.query.get('customer')) { try { pre = (await api('/customers/' + Number(ctx.query.get('customer')))).customer; } catch { } }
-    inv = { title: '', customer: pre ? { customer_id: pre.id, name: pre.name || '', phone: pre.phone || '', address: pre.address || '', il: pre.il || '', ilce: pre.ilce || '' } : { name: '', phone: '', address: '', il: '', ilce: '' }, ...(pre && pre.is_official ? { is_official: 1, tax_no: pre.tax_no, official_title: pre.official_title, tax_office: pre.tax_office, person_type: pre.person_type } : {}), date: today(), invoice_no: '', order_info: '', note: '', source_id: null, payment_id: null, is_official: pre && pre.is_official ? 1 : 0, prices_incl_vat: st.prices_incl_vat_default ? 1 : 0, lines: [blankLine()] };
+    inv = { title: '', customer: pre ? { customer_id: pre.id, name: pre.name || '', phone: pre.phone || '', address: pre.address || '', il: pre.il || '', ilce: pre.ilce || '' } : { name: '', phone: '', address: '', il: '', ilce: '' }, ...(pre && pre.is_official ? { is_official: 1, tax_no: pre.tax_no, official_title: pre.official_title, tax_office: pre.tax_office, person_type: pre.person_type } : {}), date: today(), invoice_no: '', order_info: '', note: '', source_id: null, payment_id: null, rep_id: null, is_official: pre && pre.is_official ? 1 : 0, prices_incl_vat: st.prices_incl_vat_default ? 1 : 0, lines: [blankLine()] };
     setTitle(`<span class="crumb"><a href="#/b/${brand}/faturalar">Satış Faturaları</a> › </span>Yeni Fatura`);
   }
   function blankLine() { return { product_id: null, variant_id: null, description: '', qty: 1, unit: 'Adet', unit_price: '', vat_rate: Number(st.default_vat) || 20, band_length_mm: null, is_band: false }; }
@@ -102,6 +103,7 @@ export async function invoiceForm(ctx, id) {
     <aside class="sidebox">
       <div><div class="label" style="margin-bottom:8px">${icon('map')} Kaynak</div><div id="srcp"></div><div class="muted small" style="margin-top:6px;font-style:italic">Siparişin geldiği yer. Raporlarda kaynak bazında dağılımı görürsünüz.</div></div>
       <div><div class="label" style="margin-bottom:8px">${icon('wallet')} Ödeme Yöntemi</div><div id="payp"></div><div class="muted small" style="margin-top:6px;font-style:italic">Havale / kapıda ödeme dağılımı raporlanır.</div></div>
+      <div><div class="label" style="margin-bottom:8px">${icon('user')} Satış Temsilcisi</div><div id="repp"></div><div class="muted small" style="margin-top:6px;font-style:italic">Satışı yapan kişi (müşteri değil). Raporlarda temsilci bazında görünür.</div></div>
       ${id ? `<div><button type="button" class="btn danger sm" id="del">${icon('trash')} Faturayı sil</button></div>` : ''}
     </aside></div>
     <div class="lines"><table><thead><tr><th style="width:44%">Hizmet / Ürün</th><th>Miktar</th><th>Birim</th><th>Br. Fiyat</th><th>Vergi</th><th style="text-align:right">Toplam</th><th></th></tr></thead><tbody id="lb"></tbody></table>
@@ -112,6 +114,7 @@ export async function invoiceForm(ctx, id) {
   const f = $('#f', el);
   tagPicker($('#srcp', el), { kind: 'source', value: inv.source_id, onChange: v => inv.source_id = v });
   tagPicker($('#payp', el), { kind: 'payment', value: inv.payment_id, onChange: v => inv.payment_id = v });
+  tagPicker($('#repp', el), { kind: 'rep', value: inv.rep_id, onChange: v => inv.rep_id = v });
   ilIlce(f.il, f.ilce);
   $('#addno', el).onclick = e => { e.target.style.display = 'none'; $('#norow', el).classList.remove('hidden'); f.invoice_no.focus(); };
   $('#addord', el).onclick = e => { e.target.style.display = 'none'; $('#ordrow', el).classList.remove('hidden'); f.order_info.focus(); };
@@ -121,7 +124,7 @@ export async function invoiceForm(ctx, id) {
   const badge = () => {
     const b = $('#cbadge', el);
     if (inv.customer.customer_id) b.innerHTML = `<span class="badge-old">Kayıtlı müşteri${custOrders.n ? ` · ${custOrders.n}. sipariş` : ''}</span>`;
-    else b.innerHTML = f.cname.value.trim() || f.name.value.trim() ? '<span class="badge-new">YENİ</span>' : '';
+    else b.innerHTML = f.cname.value.trim() || f.name.value.trim() ? '<span class="badge-new">YENİ</span>' : '<span class="badge-old">Boş = mağaza müşterisi</span>';
   };
   const fillCustomer = c => {
     inv.customer.customer_id = c.id;
@@ -206,14 +209,13 @@ export async function invoiceForm(ctx, id) {
     e.preventDefault();
     const name = f.name.value.trim();
     const lines = inv.lines.filter(l => l.description || l.variant_id);
-    if (!name && !f.phone.value.trim()) return toast('Müşteri adı veya telefonu girin.', true);
     if (!lines.length) return toast('En az bir ürün satırı ekleyin.', true);
     if (f.phone.value && !phoneNorm(f.phone.value) && !(await confirmBox('Telefon numarası 05XX XXX XX XX biçiminde değil. Yine de kaydedilsin mi?'))) return;
     const bad = lines.find(l => l.is_band && !l.band_length_mm);
     if (bad && !(await confirmBox('Şerit satırında boy (mm) girilmemiş. Metraj raporuna yansımaz. Devam edilsin mi?'))) return;
     const payload = {
       brand, title: f.title.value.trim(), date: f.date.value, invoice_no: f.invoice_no.value.trim(), order_info: f.order_info.value.trim(), note: f.note.value.trim(),
-      source_id: inv.source_id, payment_id: inv.payment_id, prices_incl_vat: f.prices_incl_vat.checked ? 1 : 0,
+      source_id: inv.source_id, payment_id: inv.payment_id, rep_id: inv.rep_id, prices_incl_vat: f.prices_incl_vat.checked ? 1 : 0,
       is_official: f.is_official.checked ? 1 : 0, tax_no: f.tax_no.value.trim(), official_title: f.official_title.value.trim(), tax_office: f.tax_office.value.trim(), person_type: f.person_type.value,
       customer: { customer_id: inv.customer.customer_id || null, name, phone: phoneNorm(f.phone.value) || f.phone.value.trim(), address: f.address.value.trim(), il: f.il.value.trim(), ilce: f.ilce.value.trim() },
       lines: lines.map(l => ({ product_id: l.product_id, variant_id: l.variant_id, description: l.description, qty: Number(l.qty) || 0, unit: l.unit, unit_price: Number(l.unit_price) || 0, vat_rate: l.vat_rate, band_length_mm: l.is_band ? l.band_length_mm : null }))

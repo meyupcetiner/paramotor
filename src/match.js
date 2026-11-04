@@ -31,7 +31,7 @@ function numbersIn(t) {
 export function extractDims(raw) {
   const t = fold(raw).replace(/[×*]/g, 'x');
   const d = {};
-  const z = t.match(/(?:z\s*(\d{1,3})|(\d{1,3})\s*(?:dis|dişli|disli|diş))/);
+  const z = t.match(/(?:\bz\s*(\d{1,3})|(\d{1,3})\s*(?:dis|dişli|disli|diş|z)\b)/);
   if (z) d.teeth = parseInt(z[1] || z[2]);
   const tpi = t.match(/(\d{1,2}(?:[.,]\d+)?\s*\/\s*\d{1,2}(?:[.,]\d+)?)\s*(?:tpi)?/);
   if (tpi && !/x/.test(tpi[1])) d.tpi = tpi[1].replace(/\s/g, '').replace(/,/g, '.');
@@ -68,7 +68,7 @@ function normTpi(s) { return String(s || '').replace(/\s/g, '').replace(/,/g, '.
 // catalog: [{id, product_id, label, diameter, thickness, bore, teeth, width, tpi, length, p: {name, mfr, category, subcategory, is_band}}]
 export function matchItem(item, catalog) {
   const raw = [item.raw_text, item.product_hint, item.brand_hint].filter(Boolean).join(' ');
-  const t = fold(raw);
+  const t = fold(raw).replace(/dry\s*-?\s*cut/g, 'dry cut').replace(/kuru\s*kesim/g, 'dry cut');
   const dims = { ...extractDims(item.raw_text || ''), ...strip(item) };
   let kind = item.kind && item.kind !== 'belirsiz' ? item.kind : null;
   if (!kind) kind = (/serit|şerit/.test(t) || dims.width || dims.length_mm) ? 'serit' : (dims.diameter ? 'daire' : null);

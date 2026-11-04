@@ -21,4 +21,13 @@ const m2 = matchItem({ raw_text: '2240*27*0.9 bimetal şerit 3/4' }, cat); const
 eq([v2.width, v2.thickness, v2.tpi, v2.p.subcategory], [27, 0.9, '3/4', 'Bimetal'], 'bimetal 27x0.9 3/4 eşleşti');
 const m3 = matchItem({ raw_text: 'et kemik şeridi 16 lük' }, cat); const v3 = cat.find(v => v.id === m3.variant_id);
 eq([v3.width, v3.p.subcategory], [16, 'Et-Kemik'], 'et kemik 16 lük eşleşti');
+const w = parseText(readFileSync(new URL('./ornek-wp-grup.txt', import.meta.url), 'utf8'), { sources: S, payments: P });
+eq(w.length, 6, 'WhatsApp grubu: 6 sipariş');
+eq([w[0].date, w[0].is_official, w[0].tax_no, w[0].tax_office, w[0].il, w[0].ilce, w[0].source, w[0].rep], ['2026-11-02', true, '6190137323', 'İkitelli', 'İstanbul', 'Başakşehir', 'WhatsApp', 'M.cemal'], 'resmi satış + vergi bilgisi');
+eq([w[1].customer_name, w[1].il, w[1].ilce, w[1].payment, w[1].items.length, w[1].items[0].qty, w[1].items[0].unit_price, w[1].items[1].unit_price, w[1].order_total], ['Ercan bayatlı', 'Afyonkarahisar', 'Bayat', 'Kapıda Nakit', 2, 1, 3800, 2950, 6750], 'iki ürün, satır fiyatları, toplam');
+eq([w[3].items[0].qty, w[3].items[0].unit_price, w[3].rep], [2, 5200, 'Dogan'], '2 adet, toplamdan birim fiyat, temsilci');
+eq([w[4].il, w[4].ilce], ['Malatya', 'Kale'], 'adres sonundan il/ilçe');
+eq([w[5].anonymous, w[5].source, w[5].order_total, w[5].rep], [true, 'Mağaza', 2500, 'M.arslan'], 'isimsiz mağaza satışı');
+const mw = matchItem({ raw_text: w[2].items[0].spec }, cat); const vw = cat.find(v => v.id === mw.variant_id);
+eq([vw.p.name, vw.diameter, vw.teeth], ['Kronberg Metal Dry Cut', 305, 80], '305x80z Kronberg Drycut eşleşti');
 console.log(fail ? `${fail} test başarısız` : 'Tüm testler geçti'); process.exit(fail ? 1 : 0);

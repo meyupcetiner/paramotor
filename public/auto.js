@@ -1,8 +1,9 @@
 // Otomatik Satış Gir: WhatsApp metni / ekran görüntüsü → önizleme → onay → fatura
-import { S, api, esc, $, $$, icon, toast, money, int, dmy, today, parseNum, numIn, phoneFmt, phoneNorm, pill, srcById, payById, loadCatalog, searchCatalog, variantById, autocomplete, matchIl, matchIlce, ilIlce, shrinkImage, modal, confirmBox, fold } from './core.js';
+import { S, api, esc, $, $$, icon, toast, money, int, dmy, today, parseNum, numIn, phoneFmt, phoneNorm, pill, srcById, payById, repById, loadCatalog, searchCatalog, variantById, autocomplete, matchIl, matchIlce, ilIlce, shrinkImage, modal, confirmBox, fold } from './core.js';
 import { setTitle } from './app.js';
 
 const MAX_IMG = 20;
+const R_DATE = () => (STATE && STATE.result && STATE.result.date) || '';
 const FIELD_TR = { customer_name: 'Ad Soyad', phone: 'Telefon', address: 'Adres', il: 'İl', ilce: 'İlçe', source: 'Kaynak', payment: 'Ödeme', items: 'Ürün', phone_format: 'Telefon biçimi' };
 let STATE = null; // sayfa değişse de taslak kaybolmasın (aynı oturumda)
 
@@ -23,7 +24,7 @@ export async function autoPage(ctx) {
       <div class="row wrap" style="padding:6px 4px 0"><label class="btn sm">${icon('image')} Görsel seç<input type="file" id="file" accept="image/*" multiple hidden></label><span class="muted small" id="imgc"></span><span class="sp"></span><span class="muted small">Okuma: <b>${hasKey ? 'Claude (metin + görsel)' : 'Kural tabanlı (sadece metin)'}</b></span></div>
     </div>
     <div class="row wrap" style="margin-top:14px;gap:14px">
-      <label class="field"><span>Satış tarihi (tüm siparişler bu tarihle kaydedilir) *</span><input class="in" type="date" id="date" value="${esc(STATE.date)}" style="width:210px" required></label>
+      <label class="field"><span>Satış tarihi — mesajın başında [tarih saat] yoksa kullanılır</span><input class="in" type="date" id="date" value="${esc(STATE.date)}" style="width:210px"></label>
       <div class="row" style="align-self:end;gap:6px"><button class="btn sm" data-d="0">Bugün</button><button class="btn sm" data-d="-1">Dün</button></div>
       <span class="sp"></span>
       ${hasKey ? `<label class="chk small" style="align-self:end"><input type="checkbox" id="rule"> Metni kural tabanlı oku (API kullanma)</label>` : ''}
@@ -58,7 +59,7 @@ export async function autoPage(ctx) {
   drawThumbs();
 
   $('#go', el).onclick = async () => {
-    if (!dateEl.value) { dateEl.classList.add('bad'); dateEl.focus(); return toast('Önce satış tarihini seçin.', true); }
+    if (!dateEl.value && !/^\s*\[?\d{1,2}[./]\d{1,2}[./]\d{2,4}/m.test(txt.value)) { dateEl.classList.add('bad'); dateEl.focus(); return toast('Mesajlarda tarih yok; satış tarihini seçin.', true); }
     dateEl.classList.remove('bad');
     if (!txt.value.trim() && !STATE.images.length) return toast('Metin yapıştırın veya görsel ekleyin.', true);
     if (STATE.images.length && !hasKey) return toast('Görsel okumak için API anahtarı gerekli. Görselleri kaldırıp metni yapıştırın.', true);
@@ -80,7 +81,7 @@ function drawResult(ctx) {
   if (!orders.length) { box.innerHTML = '<div class="notice">Mesajlarda sipariş bulunamadı. Metni/görseli kontrol edin.</div>'; return; }
   const nWarn = orders.filter(o => issues(o).length).length;
   box.innerHTML = `<div class="card"><div class="bd" style="padding-top:16px"><div class="row wrap">
-      <div><b style="font-size:16px">${orders.length} sipariş bulundu</b> <span class="muted">· ${dmy(R.date)} tarihli · okuma: ${esc(R.engine === 'claude' ? 'Claude' : 'kural tabanlı')}</span><div class="small ${nWarn ? '' : 'pos'}" style="margin-top:2px">${nWarn ? `${icon('warn')} ${nWarn} siparişte kontrol edilmesi gereken alan var (sarı işaretli).` : 'Belirsiz alan yok.'}</div></div>
+      <div><b style="font-size:16px">${orders.length} sipariş bulundu</b> <span class="muted">· ${[...new Set(orders.map(o => dmy(o.date || R.date)))].filter(Boolean).join(', ')} · okuma: ${esc(R.engine === 'claude' ? 'Claude' : 'kural tabanlı')}</span><div class="small ${nWarn ? '' : 'pos'}" style="margin-top:2px">${nWarn ? `${icon('warn')} ${nWarn} siparişte kontrol edilmesi gereken alan var (sarı işaretli).` : 'Belirsiz alan yok.'}</div></div>
       <span class="sp"></span><label class="chk small"><input type="checkbox" id="incl" ${S.boot.settings.prices_incl_vat_default ? 'checked' : ''}> Mesajdaki fiyatlar KDV dahil</label>
       <button class="btn" id="all">${icon('check')} Hepsini onayla</button><button class="btn pri up" id="commit">Onaylananları kaydet (<span id="nok">0</span>)</button></div></div></div>
     <div id="ol" style="display:grid;gap:14px"></div>
@@ -97,6 +98,7 @@ function drawResult(ctx) {
   $('#commit', box).onclick = async () => {
     const sel = orders.filter(o => o._ok && !o._off);
     if (!sel.length) return toast('Kaydetmek için en az bir siparişi onaylayın.', true);
+    if (sel.some(o => !o.date && !R.date)) return toast('Tarihi olmayan sipariş var; sipariş kartındaki tarihi doldurun.', true);
     const unmatched = sel.flatMap(o => o.items).filter(it => !it.variant_id && it.description).length;
     if (unmatched && !(await confirmBox(`${unmatched} ürün satırı katalogla eşleşmedi; serbest metin olarak kaydedilecek. Devam edilsin mi?`))) return;
     const noLen = sel.flatMap(o => o.items).filter(it => it.is_band && !it.band_length_mm).length;
@@ -105,6 +107,7 @@ function drawResult(ctx) {
     try {
       const r = await api.post('/auto/commit', { brand, date: R.date, batch_id: R.batch_id, prices_incl_vat: $('#incl', box).checked, orders: sel.map(o => ({ ...o, items: o.items.filter(it => it.description || it.variant_id) })) });
       toast(`${r.invoice_ids.length} fatura oluşturuldu`);
+      try { const b2 = await api('/bootstrap'); S.boot.reps = b2.reps; } catch { }
       const rest = orders.filter(o => !(o._ok && !o._off));
       if (rest.length) { R.orders = rest; drawResult(ctx); }
       else { STATE = null; location.hash = `#/b/${brand}/faturalar?auto=${R.batch_id}`; }
@@ -114,22 +117,23 @@ function drawResult(ctx) {
 
 function issues(o) {
   const out = [];
-  for (const f of o.flags || []) out.push(f);
-  if (!phoneNorm(o.phone)) out.push('phone');
-  if (!o.source_id) out.push('source'); if (!o.payment_id) out.push('payment');
+  for (const f of o.flags || []) if (!(o.anonymous && ['customer_name', 'phone', 'address', 'il', 'ilce', 'payment'].includes(f))) out.push(f);
+  if (!o.anonymous && !phoneNorm(o.phone)) out.push('phone');
+  if (!o.source_id) out.push('source'); if (!o.payment_id && !o.anonymous && !o.is_official) out.push('payment');
+  if (!o.date) out.push('date');
   if (o.il && !matchIl(o.il)) out.push('il'); if (o.ilce && o.il && !matchIlce(o.il, o.ilce)) out.push('ilce');
   for (const it of o.items || []) if ((it.warnings || []).length || it.confidence !== 'ok') out.push('item');
   if (o.duplicate || o.batch_duplicate_of !== undefined) out.push('dup');
   return [...new Set(out)];
 }
-const fl = (o, k) => ((o.flags || []).includes(k) || (k === 'phone' && !phoneNorm(o.phone)) || (k === 'source' && !o.source_id) || (k === 'payment' && !o.payment_id) || (k === 'il' && o.il && !matchIl(o.il)) || (k === 'ilce' && o.ilce && o.il && !matchIlce(o.il, o.ilce))) ? 'flag' : '';
+const fl = (o, k) => (o.anonymous && ['customer_name', 'phone', 'address', 'il', 'ilce', 'payment'].includes(k)) ? '' : ((o.flags || []).includes(k) || (k === 'date' && !o.date) || (k === 'phone' && !phoneNorm(o.phone)) || (k === 'source' && !o.source_id) || (k === 'payment' && !o.payment_id) || (k === 'il' && o.il && !matchIl(o.il)) || (k === 'ilce' && o.ilce && o.il && !matchIlce(o.il, o.ilce))) ? 'flag' : '';
 
 function orderCard(o, i) {
   const iss = issues(o);
   const ex = o.existing_customer;
   return `<div class="order ${o._ok ? 'ok' : ''} ${o._off ? 'dis' : ''}" data-i="${i}">
     <div class="oh"><b>#${i + 1}</b><span class="muted small">${esc(o.source_ref || '')}</span>
-      ${ex ? `<span class="badge-old">Kayıtlı müşteri · ${ex.orders + 1}. sipariş</span>` : (phoneNorm(o.phone) ? '<span class="badge-new">YENİ MÜŞTERİ</span>' : '')}
+      ${o.anonymous ? '<span class="pill soft">MAĞAZA MÜŞTERİSİ (İSİMSİZ)</span>' : ex ? `<span class="badge-old">Kayıtlı müşteri · ${ex.orders + 1}. sipariş</span>` : (phoneNorm(o.phone) ? '<span class="badge-new">YENİ MÜŞTERİ</span>' : '')}${o.is_official ? '<span class="pill soft">RESMİ SATIŞ</span>' : ''}
       ${o.duplicate ? `<span class="pill bad">Olası mükerrer: ${esc(o.duplicate.invoice_no)} aynı gün/müşteri/ürün</span>` : ''}
       ${o.batch_duplicate_of !== undefined ? `<span class="pill bad">Bu partide #${o.batch_duplicate_of + 1} ile aynı</span>` : ''}
       ${iss.length ? `<span class="pill warn">${iss.length} kontrol</span>` : '<span class="pill ok">Temiz</span>'}
@@ -143,6 +147,12 @@ function orderCard(o, i) {
         <label class="field ${fl(o, 'address')}"><span>Adres</span><input class="in sm" data-k="address" value="${esc(o.address)}"></label>
         <label class="field ${fl(o, 'il')}"><span>İl</span><input class="in sm" data-k="il" value="${esc(o.il)}"></label>
         <label class="field ${fl(o, 'ilce')}"><span>İlçe</span><input class="in sm" data-k="ilce" value="${esc(o.ilce)}"></label>
+      </div>
+      ${o.is_official ? `<div class="fgrid2"><label class="field"><span>Resmi unvan</span><input class="in sm" data-k="official_title" value="${esc(o.official_title || '')}"></label><label class="field"><span>VKN / TCKN</span><input class="in sm" data-k="tax_no" value="${esc(o.tax_no || '')}"></label><label class="field"><span>Vergi dairesi</span><input class="in sm" data-k="tax_office" value="${esc(o.tax_office || '')}"></label></div>` : ''}
+      <div class="fgrid">
+        <label class="field ${fl(o, 'date')}"><span>Satış tarihi</span><input class="in sm" type="date" data-k="date" value="${esc(o.date || R_DATE())}"></label>
+        <label class="field"><span>Satış temsilcisi</span><select class="in sm" data-k="rep_id"><option value="">${o.rep_raw && !o.rep_id ? `Yeni eklenecek: ${esc(o.rep_raw)}` : 'Belirtilmemiş'}</option>${(S.boot.reps || []).filter(s => s.active).map(s => `<option value="${s.id}" ${o.rep_id === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></label>
+        <label class="field" style="grid-column:span 3"><span>Mesajda temsilci</span><input class="in sm" data-k="rep_raw" value="${esc(o.rep_raw || '')}" placeholder="ör. M.cemal"></label>
       </div>
       <div class="fgrid2">
         <label class="field ${fl(o, 'source')}"><span>Kaynak</span><select class="in sm" data-k="source_id"><option value="">Belirsiz — seçin</option>${S.boot.sources.filter(s => s.active).map(s => `<option value="${s.id}" ${o.source_id === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></label>
@@ -178,7 +188,7 @@ function bindOrder(ctx, card, o, i) {
   $$('[data-k]', card).forEach(inp => {
     inp.onchange = () => {
       const k = inp.dataset.k; let v = inp.value;
-      if (k === 'source_id' || k === 'payment_id') v = v ? Number(v) : null;
+      if (k === 'source_id' || k === 'payment_id' || k === 'rep_id') v = v ? Number(v) : null;
       if (k === 'phone') { const n = phoneNorm(v); if (n) { v = n; inp.value = phoneFmt(n); } }
       if (k === 'il') { const m = matchIl(v); if (m) { v = m; inp.value = m; } }
       if (k === 'ilce') { const m = matchIlce(o.il, v); if (m) { v = m; inp.value = m; } }

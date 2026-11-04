@@ -89,27 +89,41 @@ function parseMoney(s) {
 }
 const MONEY_RE = /(\d[\d.,]*)\s*(?:tl|₺|lira|try)\b/i;
 
+const HEAD_RE = /^\s*\[?(\d{1,2})[./](\d{1,2})[./](\d{2,4}),?\s+\d{1,2}[:.]\d{2}(?::\d{2})?\]?\s*(?:-\s*)?(?:~\s*)?([^:\n]{1,40}):\s?/;
+export const ITEM_RE = /^(\d{1,3})\s*[-–]\s*(\d.*)$/;
+export const TOTAL_RE = /^(wp|wa|whatsapp|watsap|fb|face|facebook|ig|insta|instagram|ma[gğ]aza|dükkan|dukkan|web|site)\s*[:.]?\s*(\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{1,2})?|\d{1,7})(?![\d.,])\s*(?:₺|tl|try)?\s*(.*)$/i;
+const isOrderish = t => t.split('\n').some(l => ITEM_RE.test(l.trim()) || TOTAL_RE.test(l.trim()));
+
 export function splitMessages(text) {
   const lines = String(text || '').replace(/\r/g, '').split('\n');
-  const hasHeaders = lines.filter(l => WA_HEADER.test(l)).length >= 1;
-  let blocks = [];
+  const hasHeaders = lines.some(l => HEAD_RE.test(l));
+  const out = [];
   if (hasHeaders) {
     let cur = null;
     for (const l of lines) {
-      if (WA_HEADER.test(l)) { if (cur) blocks.push(cur); cur = [l.replace(WA_HEADER, '')]; }
-      else if (cur) cur.push(l); else cur = [l];
+      const h = l.match(HEAD_RE);
+      if (h) {
+        if (cur) out.push(cur);
+        const y = h[3].length === 2 ? '20' + h[3] : h[3];
+        cur = { lines: [l.replace(HEAD_RE, '')], date: `${y}-${h[2].padStart(2, '0')}-${h[1].padStart(2, '0')}`, sender: h[4].trim() };
+      } else if (cur) cur.lines.push(l); else cur = { lines: [l], date: null, sender: null };
     }
-    if (cur) blocks.push(cur);
-    blocks = blocks.map(b => b.join('\n').trim()).filter(Boolean);
-  } else {
-    blocks = String(text || '').replace(/\r/g, '').split(/\n\s*\n+/).map(s => s.trim()).filter(Boolean);
+    if (cur) out.push(cur);
+    const res = [];
+    for (const b of out) {
+      const text = b.lines.join('\n').trim(); if (!text) continue;
+      const prev = res[res.length - 1];
+      // sipariş içermeyen kısa mesajlar (ör. "tamam", ek not) önceki siparişin devamıdır
+      if (prev && !isOrderish(text) && !(text.match(PHONE_RE))) { prev.text += '\n' + text; prev.merged = true; continue; }
+      res.push({ text, date: b.date, sender: b.sender, phone: (text.match(PHONE_RE) || [])[0] || null });
+    }
+    return res;
   }
-  // Telefon içermeyen blokları önceki siparişe ekle (devam mesajı); aynı telefonlu ardışık blokları birleştir.
-  const out = [];
+  const blocks = String(text || '').replace(/\r/g, '').split(/\n\s*\n+/).map(s => s.trim()).filter(Boolean);
   for (const b of blocks) {
     const ph = (b.match(PHONE_RE) || [])[0];
     const prev = out[out.length - 1];
-    if (!ph && prev) { prev.text += '\n' + b; prev.merged = true; continue; }
+    if (!ph && prev && !isOrderish(b)) { prev.text += '\n' + b; prev.merged = true; continue; }
     if (ph && prev && prev.phone && normalizePhone(prev.phone).phone === normalizePhone(ph).phone) { prev.text += '\n' + b; prev.merged = true; continue; }
     out.push({ text: b, phone: ph || null });
   }
@@ -129,7 +143,7 @@ const LABELS = {
 
 export function parseText(text, { sources = [], payments = [] } = {}) {
   const msgs = splitMessages(text);
-  return msgs.map((m, idx) => parseOne(m, idx, sources, payments));
+  return msgs.map((m, idx) => isOrderish(m.text) ? parseWA(m, idx, sources, payments) : parseOne(m, idx, sources, payments));
 }
 
 function parseOne(m, idx, sources, payments) {
@@ -220,5 +234,108 @@ function parseOne(m, idx, sources, payments) {
   }
   if (m.merged) o.note = (o.note ? o.note + ' ' : '') + 'Birden fazla mesaj tek siparişte birleştirildi.';
   delete o._pay; delete o._prod;
+  return o;
+}
+
+
+// ---------------------------------------------------------------------------
+// Testeresan WhatsApp sevkiyat grubu biçimi:
+// [2.11.2026 14:24:29] ~ Testere.com.tr: KAPIDA NAKİT ÖDEME
+// Ad Soyad / Telefon / Adres (il-ilçe adresin içinde)
+// 1-300x3.20x30 96z Kronberg Alüminyum 3800₺      ← adet-ölçü ürün [fiyat]
+// Wp6750₺                                          ← kaynak kısaltması + toplam
+// (M.cemal)                                        ← satış temsilcisi
+// İsimsiz/telefonsuz sipariş = mağaza müşterisi.
+const STATUS_RE = /(kap[ıi]da|havale|eft|iban|resm[iİ]|gayr[iİ]|ma[gğ]aza|teslim|ptt|kargo|yurt[iİ]ç[iİ]|aras|mng|s[uü]rat|elden|nakit|kredi|kart|[öo]deme|sat[ıi][şs])/i;
+const SRC_MAP = [[/^(wp|wa|whatsapp|watsap)$/i, 'WhatsApp'], [/^(fb|face|facebook)$/i, 'Facebook'], [/^(ig|insta|instagram)$/i, 'Instagram'], [/^(ma[gğ]aza|dükkan|dukkan)$/i, 'Mağaza'], [/^(web|site)$/i, 'Web']];
+const TAX_RE = /\(?\s*([^()]*?)\s*V\.?\s*D\.?\s*(?:tax\s*no|vergi\s*no|vkn|tckn|no)?\s*[:.]?\s*([\d\s]{10,14})\s*\)?/i;
+const EMAIL_RE = /[\w.+-]+@[\w-]+\.[\w.]+/;
+const COMPANY_RE = /\b(ltd|şti|sti|a\.?ş\.?|ticaret|tic\.|san\.|sanayi|inşaat|insaat|limited|anonim|pazarlama|paz\.)/i;
+const cap = s => s.replace(/(^|[\s.])(\p{L})/gu, (m, a, b) => a + b.toLocaleUpperCase('tr'));
+
+function parseWA(m, idx, sources, payments) {
+  const lines = m.text.split('\n').map(x => x.trim()).filter(Boolean);
+  const o = { date: m.date || null, customer_name: '', phone: '', address: '', il: '', ilce: '', source: 'Belirsiz', payment: 'Belirsiz', order_total: null, note: '', items: [], uncertain_fields: [], is_official: false, tax_no: '', tax_office: '', official_title: '', email: '', delivery: '', rep: '', rep_note: '', anonymous: false, source_ref: `${m.date ? m.date.split('-').reverse().join('.') + ' · ' : ''}${idx + 1}. mesaj`, raw_text: m.text };
+  const notes = [];
+  const rest = [];
+  lines.forEach((l, i) => {
+    let mm;
+    if ((mm = l.match(/^\((.+)\)$/))) { const parts = mm[1].trim().split(/\s+/); o.rep = parts[0]; o.rep_note = parts.slice(1).join(' '); return; }
+    if ((mm = l.match(/^(\d[\d.,]*)\s*(?:₺|tl|try)\s*(.*)$/i)) && o.items.length) { o.order_total = parseMoney(mm[1]); if (mm[2] && mm[2].trim()) notes.push(mm[2].trim()); return; }
+    if ((mm = l.match(TOTAL_RE))) {
+      const src = SRC_MAP.find(([re]) => re.test(mm[1])); if (src) o.source = sources.includes(src[1]) ? src[1] : (src[1] === 'Web' ? 'Belirsiz' : 'Belirsiz');
+      o.order_total = parseMoney(mm[2]); if (mm[3] && mm[3].trim()) notes.push(mm[3].trim());
+      return;
+    }
+    if ((mm = l.match(ITEM_RE))) {
+      let body = mm[2];
+      const it = { raw_text: l, qty: parseInt(mm[1]), unit_price: null, line_total: null, uncertain: [] };
+      const pm = body.match(/(\d[\d.,]*)\s*(?:₺|tl|try)\s*$/i);
+      if (pm) { it.line_total = parseMoney(pm[1]); body = body.slice(0, pm.index).trim(); }
+      if (/çıkma|cikma|ikinci el|2\.\s?el/i.test(body)) { it.second_hand = true; notes.push(`Çıkma (ikinci el) ürün: ${body}`); }
+      const note = (body.match(/\(([^)]*)\)/g) || []).map(x => x.slice(1, -1)).filter(x => !/çıkma|cikma/i.test(x));
+      if (note.length) it.note = note.join(', ');
+      it.spec = body;
+      o.items.push(it); return;
+    }
+    if (i === 0 && STATUS_RE.test(l) && !PHONE_RE.test(l.replace(/\s/g, '') ) && !/\d{3,}/.test(l)) {
+      PHONE_RE.lastIndex = 0;
+      o.payment = detectPayment(l, payments);
+      if (/kap[ıi]da/i.test(l) && o.payment === 'Belirsiz') notes.push('Kapıda ödeme yazıyor; nakit/kart belirtilmemiş.');
+      if (/resm[iİ]/i.test(l) && !/gayr/i.test(l)) o.is_official = true;
+      const low = l.toLocaleLowerCase('tr');
+      if (/^ma[gğ]aza(\s+sat[ıi][şs][ıi]?)?$/.test(low.trim()) && sources.includes('Mağaza')) o.source = 'Mağaza';
+      const del = low.replace(/gayr[iı]resm[iı]|kap[ıi]da|nakit|kredi kart[ıi]?|kart|[öo]deme|resm[iı]|sat[ıi][şs][ıi]?/g, '').replace(/\s+/g, ' ').trim();
+      if (del && !(o.source === 'Mağaza' && /^ma[gğ]aza$/.test(del))) o.delivery = cap(del);
+      return;
+    }
+    PHONE_RE.lastIndex = 0;
+    rest.push(l);
+  });
+  // kalan satırlar: isim, telefon, adres, vergi, e-posta
+  const addr = [];
+  for (let l of rest) {
+    const em = l.match(EMAIL_RE); if (em) { o.email = em[0]; l = l.replace(em[0], '').trim(); if (!l) continue; }
+    const tx = l.match(TAX_RE); if (tx) { o.tax_no = tx[2].replace(/\s/g, ''); o.tax_office = tx[1].trim().replace(/^\(/, ''); l = l.replace(tx[0], '').trim(); if (!l) continue; }
+    const ph = l.match(PHONE_RE); PHONE_RE.lastIndex = 0;
+    if (ph && !o.phone && l.replace(ph[0], '').replace(/[^\p{L}\d]/gu, '').length < 3) { o.phone = ph[0].trim(); continue; }
+    if (ph && !o.phone) { o.phone = ph[0].trim(); l = l.replace(ph[0], '').trim(); }
+    if (!o.customer_name && !o.phone && !/\d/.test(l) && !ADDRESS_WORDS.test(l)) { o.customer_name = l; continue; }
+    if (!o.customer_name && !/\d/.test(l) && (COMPANY_RE.test(l) || !ADDRESS_WORDS.test(l)) && !addr.length) { o.customer_name = l; continue; }
+    addr.push(l);
+  }
+  o.address = addr.join(' ').replace(/\s+/g, ' ').trim();
+  if (o.customer_name && COMPANY_RE.test(o.customer_name)) o.official_title = o.customer_name;
+  if (o.is_official && !o.official_title) o.official_title = o.customer_name;
+  const loc = o.address ? findIlIlce(o.address) : { il: null, ilce: null };
+  o.il = loc.il || ''; o.ilce = loc.ilce || '';
+  o.anonymous = !o.customer_name && !o.phone;
+  if (o.anonymous) { if (o.source === 'Belirsiz' && sources.includes('Mağaza')) o.source = 'Mağaza'; }
+  else {
+    if (!o.customer_name) o.uncertain_fields.push('customer_name');
+    if (!o.phone) o.uncertain_fields.push('phone');
+    if (!o.il) o.uncertain_fields.push('il');
+    if (!o.ilce) o.uncertain_fields.push('ilce');
+  }
+  if (o.source === 'Belirsiz') o.uncertain_fields.push('source');
+  if (o.payment === 'Belirsiz' && !o.is_official && !o.anonymous) o.uncertain_fields.push('payment');
+  if (!o.items.length) o.uncertain_fields.push('items');
+  if (!o.date) o.uncertain_fields.push('date');
+  // fiyatlar: tek ürün + toplam → satır toplamı; çok ürün → satır fiyatları, toplamla karşılaştır
+  const priced = o.items.filter(it => it.line_total != null);
+  if (o.items.length === 1 && o.items[0].line_total == null && o.order_total != null) o.items[0].line_total = o.order_total;
+  else if (o.items.length > 1 && o.order_total != null) {
+    const missing = o.items.filter(it => it.line_total == null);
+    const sum = priced.reduce((a, it) => a + it.line_total, 0);
+    if (missing.length === 1) missing[0].line_total = Math.max(0, o.order_total - sum);
+    else if (missing.length > 1) missing.forEach(it => it.uncertain.push('price'));
+    else if (Math.abs(sum - o.order_total) > 1) notes.push(`Satır fiyatları toplamı (${sum}) mesajdaki toplamdan (${o.order_total}) farklı.`);
+  }
+  for (const it of o.items) { if (it.line_total != null && it.qty) it.unit_price = +(it.line_total / it.qty).toFixed(4); if (it.line_total == null) it.uncertain.push('price'); }
+  for (const it of o.items) if (it.note) notes.push(`${it.spec.replace(/\s*\([^)]*\)/g, '')}: ${it.note}`);
+  if (o.delivery) notes.unshift(o.delivery);
+  if (o.email) notes.push('E-posta: ' + o.email);
+  if (o.rep_note) notes.push(`Temsilci notu: ${o.rep_note}`);
+  o.note = [...new Set(notes)].join(' · ');
   return o;
 }

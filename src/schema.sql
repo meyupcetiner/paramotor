@@ -1,6 +1,7 @@
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);
 CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, expires_at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS brands (id TEXT PRIMARY KEY, name TEXT NOT NULL, color TEXT, logo TEXT, invoice_prefix TEXT, sort INTEGER DEFAULT 0);
+CREATE TABLE IF NOT EXISTS sales_reps (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, aliases TEXT, color TEXT, sort INTEGER DEFAULT 0, active INTEGER DEFAULT 1);
 CREATE TABLE IF NOT EXISTS sources (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, color TEXT, sort INTEGER DEFAULT 0, active INTEGER DEFAULT 1);
 CREATE TABLE IF NOT EXISTS payment_methods (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, color TEXT, sort INTEGER DEFAULT 0, active INTEGER DEFAULT 1);
 CREATE TABLE IF NOT EXISTS products (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, mfr TEXT, category TEXT, subcategory TEXT, unit TEXT DEFAULT 'Adet', description TEXT, is_band INTEGER DEFAULT 0, band_type TEXT, active INTEGER DEFAULT 1, created_at TEXT);
@@ -9,7 +10,7 @@ CREATE INDEX IF NOT EXISTS ix_variants_product ON variants(product_id);
 CREATE TABLE IF NOT EXISTS customers (id INTEGER PRIMARY KEY AUTOINCREMENT, brand_id TEXT NOT NULL, name TEXT, phone TEXT, address TEXT, il TEXT, ilce TEXT, is_official INTEGER DEFAULT 0, tax_no TEXT, official_title TEXT, tax_office TEXT, person_type TEXT, note TEXT, created_at TEXT);
 CREATE UNIQUE INDEX IF NOT EXISTS ux_customers_phone ON customers(brand_id, phone);
 CREATE INDEX IF NOT EXISTS ix_customers_brand ON customers(brand_id);
-CREATE TABLE IF NOT EXISTS invoices (id INTEGER PRIMARY KEY AUTOINCREMENT, brand_id TEXT NOT NULL, seq INTEGER, invoice_no TEXT, title TEXT, customer_id INTEGER, date TEXT NOT NULL, source_id INTEGER, payment_id INTEGER, is_official INTEGER DEFAULT 0, cust_name TEXT, cust_phone TEXT, cust_address TEXT, cust_il TEXT, cust_ilce TEXT, tax_no TEXT, official_title TEXT, tax_office TEXT, person_type TEXT, order_info TEXT, note TEXT, prices_incl_vat INTEGER DEFAULT 0, subtotal REAL DEFAULT 0, vat_total REAL DEFAULT 0, total REAL DEFAULT 0, auto_batch_id INTEGER, created_at TEXT, updated_at TEXT);
+CREATE TABLE IF NOT EXISTS invoices (id INTEGER PRIMARY KEY AUTOINCREMENT, brand_id TEXT NOT NULL, seq INTEGER, invoice_no TEXT, title TEXT, customer_id INTEGER, date TEXT NOT NULL, source_id INTEGER, payment_id INTEGER, rep_id INTEGER, is_official INTEGER DEFAULT 0, cust_name TEXT, cust_phone TEXT, cust_address TEXT, cust_il TEXT, cust_ilce TEXT, tax_no TEXT, official_title TEXT, tax_office TEXT, person_type TEXT, order_info TEXT, note TEXT, prices_incl_vat INTEGER DEFAULT 0, subtotal REAL DEFAULT 0, vat_total REAL DEFAULT 0, total REAL DEFAULT 0, auto_batch_id INTEGER, created_at TEXT, updated_at TEXT);
 CREATE INDEX IF NOT EXISTS ix_invoices_brand_date ON invoices(brand_id, date);
 CREATE INDEX IF NOT EXISTS ix_invoices_customer ON invoices(customer_id);
 CREATE TABLE IF NOT EXISTS invoice_lines (id INTEGER PRIMARY KEY AUTOINCREMENT, invoice_id INTEGER NOT NULL, sort INTEGER DEFAULT 0, product_id INTEGER, variant_id INTEGER, description TEXT, qty REAL DEFAULT 1, unit TEXT DEFAULT 'Adet', unit_price REAL DEFAULT 0, vat_rate REAL DEFAULT 20, band_length_mm REAL, band_meters REAL, line_net REAL DEFAULT 0, line_vat REAL DEFAULT 0);

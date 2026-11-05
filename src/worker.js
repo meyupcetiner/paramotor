@@ -203,7 +203,7 @@ async function loadSales(env, brands, from, to) {
   const lines = [];
   for (let i = 0; i < ids.length; i += 90) {
     const chunk = ids.slice(i, i + 90);
-    lines.push(...await all(env, `SELECT l.*, p.name pname, p.category, p.subcategory, p.mfr, p.is_band, v.label vlabel, v.width vwidth, v.thickness vthick FROM invoice_lines l LEFT JOIN products p ON p.id=l.product_id LEFT JOIN variants v ON v.id=l.variant_id WHERE l.invoice_id IN (${chunk.map(() => '?').join(',')})`, ...chunk));
+    lines.push(...await all(env, `SELECT l.*, p.name pname, p.category, p.subcategory, p.mfr, p.is_band, v.label vlabel, v.width vwidth, v.thickness vthick, v.diameter vdia, v.teeth vteeth FROM invoice_lines l LEFT JOIN products p ON p.id=l.product_id LEFT JOIN variants v ON v.id=l.variant_id WHERE l.invoice_id IN (${chunk.map(() => '?').join(',')})`, ...chunk));
   }
   const by = new Map(invs.map(i => [i.id, { ...i, lines: [] }]));
   for (const l of lines) by.get(l.invoice_id)?.lines.push(l);
@@ -569,7 +569,7 @@ async function api(req, env, url) {
     invs.sort((a, b) => (b.date + String(b.id).padStart(9, '0')).localeCompare(a.date + String(a.id).padStart(9, '0')));
     const summary = { count: invs.length, subtotal: r2(invs.reduce((a, i) => a + i.subtotal, 0)), vat: r2(invs.reduce((a, i) => a + i.vat_total, 0)), total: r2(invs.reduce((a, i) => a + i.total, 0)) };
     const page = Math.max(1, Number(q.get('page') || 1)), per = Math.min(500, Number(q.get('per') || 25));
-    return json({ summary, page, per, invoices: invs.slice((page - 1) * per, page * per).map(i => ({ ...i, lines: i.lines.map(l => ({ description: l.description, qty: l.qty, band_length_mm: l.band_length_mm })) })) });
+    return json({ summary, page, per, invoices: invs.slice((page - 1) * per, page * per).map(i => ({ ...i, lines: i.lines.map(l => ({ description: l.description, qty: l.qty, band_length_mm: l.band_length_mm, band_meters: l.band_meters, pname: l.pname, mfr: l.mfr, category: l.category, subcategory: l.subcategory, is_band: l.is_band, vwidth: l.vwidth, vthick: l.vthick, vdia: l.vdia, vteeth: l.vteeth })) })) });
   }
   if (p === '/invoices' && m === 'POST') {
     const b = await body(req); if (!b.brand) return err('Marka gerekli.');

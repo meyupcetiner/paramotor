@@ -5,6 +5,21 @@ import { setTitle } from './app.js';
 const FILTER_KEYS = ['from', 'to', 'source', 'payment', 'rep', 'official', 'il', 'ilce', 'product', 'category', 'customer', 'first', 'auto'];
 const LABELS = { from: 'Başlangıç', to: 'Bitiş', source: 'Kaynak', payment: 'Ödeme', rep: 'Temsilci', official: 'Resmi', il: 'İl', ilce: 'İlçe', product: 'Ürün', category: 'Kategori', customer: 'Müşteri', first: 'Müşteri tipi', auto: 'Otomatik parti' };
 
+const nf = n => String(+n).replace('.', ',');
+const BAND_T = { Karbon: 'Karbon Şerit', Bimetal: 'Bimetal Şerit', Ahşap: 'Ahşap Şeridi', 'Et-Kemik': 'Et Şeridi', Carbide: 'Carbide Şerit', 'Kağıt-Sünger': 'Sünger Şeridi' };
+const CIRC_T = { Ahşap: 'Ahşap', 'MDF-Suntalam': 'MDF', 'Alüminyum-PVC': 'Alüminyum', Metal: 'Metal', Betopan: 'Betopan' };
+// Kısa ürün başlığı: "DryCut 305x80", "Schuster Ahşap Şeridi 4100x25"
+export function shortLabel(l) {
+  if (!l.pname) { const d = String(l.description || '').replace(/\s+/g, ' ').trim(); return d.length > 42 ? d.slice(0, 40) + '…' : d; }
+  const n = l.pname;
+  if (l.is_band) { const t = BAND_T[l.subcategory] || 'Şerit'; const size = l.band_length_mm && l.vwidth ? `${Math.round(l.band_length_mm)}x${nf(l.vwidth)}` : l.vwidth ? `${nf(l.vwidth)}x${nf(l.vthick)}` : ''; return [l.mfr, t, size].filter(Boolean).join(' '); }
+  if (/dry\s*cut/i.test(n)) return `${/paslanmaz/i.test(n) ? 'Paslanmaz ' : ''}DryCut${l.vdia ? ` ${nf(l.vdia)}x${l.vteeth || ''}` : ''}`.replace(/x$/, '');
+  if (l.vdia && l.vteeth) { const t = /ağaç/i.test(n) ? 'Ağaç' : /çizici/i.test(n) ? 'Çizici' : /freze/i.test(n) ? 'Freze' : /portatif/i.test(n) ? 'Portatif' : (CIRC_T[l.subcategory] || ''); return [l.mfr, t, `${nf(l.vdia)}x${l.vteeth}`].filter(Boolean).join(' '); }
+  if (l.vdia) return `${n.replace(/\s*\(.*?\)/g, '')} ${nf(l.vdia)}${l.vthick ? 'x' + nf(l.vthick) : ''}`;
+  return n.replace(/\s*\(.*?\)/g, '');
+}
+const shortLine = l => (l.qty && +l.qty !== 1 ? `${int(l.qty)}× ` : '') + shortLabel(l);
+
 export async function invoicesPage(ctx) {
   const { brand, query, el } = ctx;
   setTitle('Satış Faturaları');
@@ -30,10 +45,10 @@ export async function invoicesPage(ctx) {
     <div class="field"><span>İl</span><input class="in sm" data-f="il" value="${esc(query.get('il') || '')}" placeholder="ör. İstanbul"></div>
   </div><div class="row" style="padding:0 16px 14px"><span class="sp"></span><button class="btn sm" id="clr">Filtreleri temizle</button></div></div>
   ${active.length ? `<div class="chips">${active.map(k => `<span class="chip on" data-rm="${k}">${LABELS[k]}: ${esc(chipVal(k))} ✕</span>`).join('')}</div>` : ''}
-  <div class="tbl-wrap"><table class="tbl list"><thead><tr><th>Fatura ismi / müşteri</th><th>Ürünler</th><th>Düzenleme tarihi</th><th>Fatura no</th><th class="r">Toplam</th></tr></thead><tbody>
-  ${d.invoices.length ? d.invoices.map(i => { const s = srcById(i.source_id), p = payById(i.payment_id), rp = repById(i.rep_id); return `<tr class="click" data-id="${i.id}"><td><div class="t-title">${esc(i.title || i.cust_name || 'Mağaza müşterisi (isimsiz)')}</div><div class="t-sub">${esc(phoneFmt(i.cust_phone))}${i.cust_il ? ' · ' + esc([i.cust_ilce, i.cust_il].filter(Boolean).join(' / ')) : ''}</div><div class="tags">${s ? pill(s.name, s.color) : '<span class="pill out">KAYNAK?</span>'}${p ? pill(p.name, p.color) : '<span class="pill out">ÖDEME?</span>'}${rp ? `<span class="pill soft">${icon('user')} ${esc(rp.name)}</span>` : ''}${i.is_official ? '<span class="pill soft">RESMİ</span>' : ''}${i.auto_batch_id ? `<span class="pill soft" title="Otomatik girildi">${icon('spark')}</span>` : ''}</div></td>
-      <td class="t-sub" style="max-width:340px">${esc(i.lines.map(l => (l.qty !== 1 ? int(l.qty) + '× ' : '') + l.description + (l.band_length_mm ? ` (${int(l.band_length_mm)} mm)` : '')).join(' · ').slice(0, 160))}</td>
-      <td>${dmy(i.date)}</td><td class="t-sub">${esc(i.invoice_no || '')}</td><td class="r">${moneyHtml(i.total)}</td></tr>`; }).join('') : `<tr><td colspan="5"><div class="empty">Kayıt bulunamadı. <a href="#/b/${brand}/fatura/yeni">Yeni satış oluşturun</a> veya <a href="#/b/${brand}/otomatik">otomatik girin</a>.</div></td></tr>`}
+  <div class="tbl-wrap"><table class="tbl list"><thead><tr><th>Müşteri</th><th>Ürünler</th><th>Tarih</th><th class="r">Toplam</th></tr></thead><tbody>
+  ${d.invoices.length ? d.invoices.map(i => { const s = srcById(i.source_id), p = payById(i.payment_id), rp = repById(i.rep_id); return `<tr class="click${i.is_official ? ' official' : ''}" data-id="${i.id}"><td><div class="t-title">${esc(i.title || i.cust_name || 'Mağaza müşterisi')}${i.cust_il ? ` <span class="t-il">${esc(i.cust_il)}</span>` : ''}${i.is_official ? ' <span class="tag-off">RESMİ SATIŞ</span>' : ''}</div><div class="tags">${s ? pill(s.name, s.color) : '<span class="pill out">KAYNAK?</span>'}${p ? pill(p.name, p.color) : '<span class="pill out">ÖDEME?</span>'}${rp ? `<span class="pill soft">${icon('user')} ${esc(rp.name)}</span>` : ''}</div></td>
+      <td class="t-prod">${i.lines.map(l => `<div>${esc(shortLine(l))}</div>`).slice(0, 3).join('')}${i.lines.length > 3 ? `<div class="t-sub">+${i.lines.length - 3} kalem</div>` : ''}</td>
+      <td>${dmy(i.date)}</td><td class="r">${moneyHtml(i.total)}</td></tr>`; }).join('') : `<tr><td colspan="4"><div class="empty">Kayıt bulunamadı. <a href="#/b/${brand}/fatura/yeni">Yeni satış oluşturun</a> veya <a href="#/b/${brand}/otomatik">otomatik girin</a>.</div></td></tr>`}
   </tbody></table></div>
   <div class="footbar"><button class="btn sm" id="xcsv">${icon('download')} CSV</button><button class="btn sm" id="xxls">${icon('download')} Excel</button>
     <div class="pager"><button data-pg="${page - 1}" ${page <= 1 ? 'disabled' : ''}>‹</button>${pagerNums(page, pages).map(n => n === '…' ? '<button disabled>…</button>' : `<button data-pg="${n}" class="${n === page ? 'on' : ''}">${n}</button>`).join('')}<button data-pg="${page + 1}" ${page >= pages ? 'disabled' : ''}>›</button></div>

@@ -203,6 +203,10 @@ table.tbl.compact td { padding: 8px 10px; }
 table.tbl.compact th { padding: 8px 10px; }
 .t-title { font-size: 15px; }
 .t-sub { color: var(--muted); font-size: 13px; }
+.t-il { color: var(--muted); font-weight: 500; font-size: 13px; margin-left: 4px; }
+.t-prod { font-size: 13.5px; line-height: 1.45; max-width: 340px; }
+.tag-off { display: inline-block; margin-left: 6px; padding: 2px 7px; border-radius: 4px; background: var(--blue); color: #fff; font-size: 10.5px; font-weight: 700; letter-spacing: .04em; vertical-align: 2px; }
+tr.official td:first-child { box-shadow: inset 3px 0 0 var(--blue); }
 .tags { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 4px; }
 .amount { font-size: 15px; font-weight: 600; color: var(--text); white-space: nowrap; }
 .amount .dec { opacity: .5; font-weight: 500; }

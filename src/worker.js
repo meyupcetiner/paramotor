@@ -127,6 +127,31 @@ async function ensureDB(env) {
     for (let i = 0; i < ups.length; i += 100) await env.DB.batch(ups.slice(i, i + 100));
     await run(env, "INSERT INTO settings (key,value) VALUES ('migr_v9','1') ON CONFLICT(key) DO NOTHING");
   }
+  if (!(await first(env, "SELECT value FROM settings WHERE key='migr_v10'"))) { // v10: aynı isim + aynı il/ilçe müşterileri tekle
+    const cs = await all(env, 'SELECT c.*, (SELECT COUNT(*) FROM invoices i WHERE i.customer_id=c.id) n FROM customers c WHERE c.name IS NOT NULL');
+    const groups = {}; for (const c of cs) (groups[c.brand_id + '|' + custKey(c.name)] ||= []).push(c);
+    for (const g of Object.values(groups)) {
+      if (g.length < 2) continue;
+      g.sort((a, b) => (b.phone ? 1 : 0) - (a.phone ? 1 : 0) || b.n - a.n || a.id - b.id);
+      const used = new Set();
+      for (const keep of g) {
+        if (used.has(keep.id)) continue; used.add(keep.id);
+        const dup = g.filter(x => !used.has(x.id) && placeOk(x, keep) && (x.il || x.ilce || keep.il || keep.ilce ? true : !x.phone || !keep.phone || x.phone === keep.phone));
+        if (!dup.length) continue;
+        const fill = k => keep[k] || (dup.find(d => d[k]) || {})[k] || null;
+        const others = dup.filter(d => d.phone && d.phone !== keep.phone).map(d => d.phone);
+        const note = [keep.note, others.length ? 'Diğer telefon: ' + others.join(', ') : ''].filter(Boolean).join(' · ') || null;
+        const ids = dup.map(d => d.id); for (const d of dup) used.add(d.id);
+        const ph = ids.map(() => '?').join(',');
+        await env.DB.batch([
+          env.DB.prepare(`UPDATE invoices SET customer_id=? WHERE customer_id IN (${ph})`).bind(keep.id, ...ids),
+          env.DB.prepare(`DELETE FROM customers WHERE id IN (${ph})`).bind(...ids),
+          env.DB.prepare('UPDATE customers SET name=?, address=?, il=?, ilce=?, tax_no=?, official_title=?, tax_office=?, is_official=?, note=? WHERE id=?').bind([keep, ...dup].map(x => x.name).find(n => n !== n.toLocaleUpperCase('tr')) || keep.name, fill('address'), fill('il'), fill('ilce'), fill('tax_no'), fill('official_title'), fill('tax_office'), dup.some(d => d.is_official) || keep.is_official ? 1 : 0, note, keep.id)
+        ]);
+      }
+    }
+    await run(env, "INSERT INTO settings (key,value) VALUES ('migr_v10','1') ON CONFLICT(key) DO NOTHING");
+  }
   { const pays = await all(env, 'SELECT name FROM payment_methods'); let k = pays.length; for (const [n, c] of PAYMENTS) if (!pays.some(x => x.name === n)) await run(env, 'INSERT INTO payment_methods (name,color,sort) VALUES (?,?,?)', n, c, k++); }
   await normalizeServices(env);
   READY = true;
@@ -212,23 +237,38 @@ const lookups = async env => ({
   brands: await all(env, 'SELECT * FROM brands ORDER BY sort')
 });
 
+// Aynı isim + aynı il/ilçe = aynı müşteri. Aynı isim farklı yerden gelirse "İsim 2", "İsim 3" diye yeni müşteri açılır.
+const custKey = n => fold(String(n || '')).replace(/[^a-z0-9]+/g, ' ').trim().replace(/([a-z])(\d+)$/, '$1 $2');
+const custBase = n => custKey(n).replace(/\s*\d+$/, '').trim();
+const placeOk = (a, b) => (!a.il || !b.il || custKey(a.il) === custKey(b.il)) && (!a.ilce || !b.ilce || custKey(a.ilce) === custKey(b.ilce));
 async function upsertCustomer(env, brand, c) {
   const np = normalizePhone(c.phone);
   const phone = np.ok ? np.phone : (c.phone || '').trim() || null;
-  let row = null;
-  if (c.customer_id) row = await first(env, 'SELECT * FROM customers WHERE id=? AND brand_id=?', c.customer_id, brand);
+  let row = null, byId = false;
+  if (c.customer_id) { row = await first(env, 'SELECT * FROM customers WHERE id=? AND brand_id=?', c.customer_id, brand); byId = !!row; }
   if (!row && phone) row = await first(env, 'SELECT * FROM customers WHERE brand_id=? AND phone=?', brand, phone);
   const f = { name: c.name || null, phone, address: c.address || null, il: c.il || null, ilce: c.ilce || null };
   if (!row && !f.name && !f.phone) return null; // isimsiz mağaza müşterisi: müşteri kaydı açılmaz
+  if (!row && f.name) { // telefonla bulunamadı: aynı isimli müşteriler
+    const base = custBase(f.name), key = custKey(f.name);
+    const fam = (await all(env, 'SELECT * FROM customers WHERE brand_id=? AND name IS NOT NULL', brand)).filter(x => custBase(x.name) === base);
+    const exact = fam.filter(x => custKey(x.name) === key);
+    row = exact.find(x => placeOk(x, f) && (!phone || !x.phone || x.phone === phone || (x.ilce && f.ilce))) || (key !== base ? null : fam.find(x => placeOk(x, f) && (!phone || !x.phone || x.phone === phone) && x.il && f.il)) || null;
+    if (!row && fam.length && key === base) { // aynı isim, farklı yer/telefon: sıradaki numara
+      const nums = fam.map(x => { const m = custKey(x.name).match(/(\d+)$/); return m && custBase(x.name) === base && custKey(x.name) !== base ? Number(m[1]) : 1; });
+      f.name = `${String(f.name).trim()} ${Math.max(1, ...nums) + 1}`;
+    }
+  }
   if (row) {
-    await run(env, `UPDATE customers SET name=COALESCE(?,name), phone=COALESCE(?,phone), address=COALESCE(?,address), il=COALESCE(?,il), ilce=COALESCE(?,ilce),
+    await run(env, `UPDATE customers SET name=${byId ? 'COALESCE(?,name)' : 'COALESCE(name,?)'}, phone=COALESCE(?,phone), address=COALESCE(?,address), il=COALESCE(?,il), ilce=COALESCE(?,ilce),
       is_official=CASE WHEN ? THEN 1 ELSE is_official END, tax_no=COALESCE(?,tax_no), official_title=COALESCE(?,official_title), tax_office=COALESCE(?,tax_office), person_type=COALESCE(?,person_type) WHERE id=?`,
       f.name, f.phone, f.address, f.il, f.ilce, c.is_official ? 1 : 0, c.tax_no || null, c.official_title || null, c.tax_office || null, c.person_type || null, row.id);
-    return row.id;
+    const nr = await first(env, 'SELECT name FROM customers WHERE id=?', row.id);
+    return { id: row.id, name: nr && nr.name };
   }
   const r = await run(env, 'INSERT INTO customers (brand_id,name,phone,address,il,ilce,is_official,tax_no,official_title,tax_office,person_type,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
     brand, f.name, f.phone, f.address, f.il, f.ilce, c.is_official ? 1 : 0, c.tax_no || null, c.official_title || null, c.tax_office || null, c.person_type || null, nowISO());
-  return r.meta.last_row_id;
+  return { id: r.meta.last_row_id, name: f.name };
 }
 
 function computeLines(lines, inclVat, defVat) {
@@ -251,7 +291,8 @@ async function saveInvoice(env, brand, body, id = null, settings = null) {
   if (!body.date) throw new Error('Düzenleme tarihi gerekli.');
   const cust = { ...(body.customer || {}) };
   Object.assign(cust, canonIlIlce(cust.il, cust.ilce));
-  const custId = await upsertCustomer(env, brand, { ...cust, is_official: body.is_official, tax_no: body.tax_no, official_title: body.official_title, tax_office: body.tax_office, person_type: body.person_type });
+  const cr = await upsertCustomer(env, brand, { ...cust, is_official: body.is_official, tax_no: body.tax_no, official_title: body.official_title, tax_office: body.tax_office, person_type: body.person_type });
+  const custId = cr ? cr.id : null; if (cr && cr.name && !body.customer?.customer_id) cust.name = cr.name;
   const np = normalizePhone(cust.phone);
   const calc = computeLines(body.lines, !!body.prices_incl_vat, Number(settings.default_vat));
   const off = body.is_official ? 1 : 0;

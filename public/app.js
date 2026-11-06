@@ -15,7 +15,7 @@ const ls = (k, v) => { try { if (v === undefined) return localStorage.getItem(k)
 function playIntro() {
   return new Promise(res => {
     const every = ls('pm_intro_every') === '1';
-    if (!every && ss('pm_intro_seen')) return res();
+    if (!every && ss('pm_intro_seen')) { document.getElementById('intro').classList.add('hidden'); return res(); }
     const el = document.getElementById('intro'); el.classList.remove('hidden', 'go', 'done');
     let finished = false;
     const done = () => { if (finished) return; finished = true; ss('pm_intro_seen', '1'); el.classList.add('done'); setTimeout(() => { el.classList.add('hidden'); }, 420); res(); };
@@ -132,16 +132,19 @@ function shell(brand) {
     </aside>
     <main class="main"><header class="topbar"><button class="btn ghost icon burger" id="bg">${icon('menu')}</button><h1 id="title"></h1><span class="sp"></span>
       <div class="user"><div><b>${esc(b ? b.name : 'Testeresan')}</b><span>${esc(b ? 'MARKA PANELİ' : 'GENEL MUHASEBE')}</span></div><a class="avatar" href="#/sec" title="Marka değiştir">${icon('user')}</a></div></header>
-      <section class="content" id="page"></section></main></div>`;
+      <section class="content" id="page"></section></main>
+    <nav class="mtabs">${(brand ? [['raporlar', 'chart', 'Rapor'], ['faturalar', 'invoice', 'Satışlar'], ['musteriler', 'users', 'Müşteri'], ['gelir-gider', 'coins', 'Gelir-Gider']] : [['ozet', 'pie', 'Özet'], ['gelir-gider', 'coins', 'Gelir-Gider'], ['giderler', 'wallet', 'Giderler']]).map(([p, ic, t]) => `<a href="${base}${p}" data-mp="${p}">${icon(ic)}<span>${t}</span></a>`).join('')}${brand ? '' : `<a href="#/sec">${icon('swap')}<span>Markalar</span></a>`}<a href="javascript:void 0" id="mmenu">${icon('menu')}<span>Menü</span></a></nav></div>`;
   const app = root.querySelector('#app');
   root.querySelector('#col').onclick = () => { app.classList.toggle('collapsed'); ls('pm_side', app.classList.contains('collapsed') ? '1' : '0'); };
   root.querySelector('#bg').onclick = () => { app.classList.add('drawer'); const s = document.createElement('div'); s.className = 'scrim'; s.onclick = () => { app.classList.remove('drawer'); s.remove(); }; app.appendChild(s); };
+  root.querySelector('#mmenu').onclick = () => root.querySelector('#bg').click();
   root.querySelector('#th').onclick = toggleTheme;
   root.querySelector('#lo').onclick = logout;
 }
 function markNav(p) {
   const app = document.getElementById('app'); if (!app) return;
   app.classList.remove('drawer'); app.querySelector('.scrim')?.remove();
+  app.querySelectorAll('.mtabs a[data-mp]').forEach(a => a.classList.toggle('on', p === a.dataset.mp || (p.startsWith('fatura') && a.dataset.mp === 'faturalar') || (p.startsWith('musteri') && a.dataset.mp === 'musteriler')));
   app.querySelectorAll('.side nav a[data-p]').forEach(a => a.classList.toggle('on', p === a.dataset.p || (p.startsWith('fatura/') && a.dataset.p === 'faturalar' && p !== 'fatura/yeni') || (p.startsWith('musteri/') && a.dataset.p === 'musteriler')));
 }
 export function setTitle(html) { const t = document.getElementById('title'); if (t) t.innerHTML = html; document.title = (t ? t.textContent : '') + ' · Paramotor'; }

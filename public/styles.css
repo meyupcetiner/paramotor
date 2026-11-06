@@ -459,3 +459,62 @@ td .avatar::after { display: none; }
 .irow [data-ik=line_total] { color: var(--muted); text-align: right; }
 .ocard .sum { color: var(--accent); }
 :root[data-theme="light"] .ocard .sum { color: var(--text); }
+
+
+/* ---------- Telefon görünümü: alt sekmeler, rapor odaklı sade düzen ---------- */
+.mtabs { display: none; }
+@media (max-width: 760px) {
+  .mtabs { display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 50; background: color-mix(in srgb, var(--surface) 92%, transparent); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-top: 1px solid var(--line); padding: 6px 4px calc(6px + env(safe-area-inset-bottom)); }
+  .mtabs a { flex: 1; display: grid; justify-items: center; gap: 3px; padding: 4px 0; color: var(--muted); font-size: 10.5px; font-weight: 600; text-decoration: none; border-radius: 10px; }
+  .mtabs a svg { width: 21px; height: 21px; }
+  .mtabs a.on { color: var(--accent); }
+  :root[data-theme="light"] .mtabs a.on { color: var(--blue); }
+  .content { padding: 2px 12px calc(84px + env(safe-area-inset-bottom)); gap: 12px; }
+  .topbar { padding: 10px 12px 8px; gap: 6px; }
+  .topbar h1 { font-size: 17px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .topbar .crumb { display: none; }
+  /* tarih çubuğu: tek satır kaydırılabilir hazır aralıklar */
+  .content { grid-template-columns: minmax(0, 1fr); }
+  .content > * { min-width: 0; }
+  .datebar { width: 100%; flex: 1 1 100%; min-width: 0; }
+  .datebar .seg { min-width: 0; }
+  .datebar .seg { display: flex; width: 100%; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+  .datebar .seg::-webkit-scrollbar { display: none; }
+  .datebar .seg button { white-space: nowrap; flex: none; padding: 7px 12px; }
+  .datebar input[type=date] { flex: 1; width: auto !important; min-width: 0; }
+  .row.wrap > .sp { display: none; }
+  /* KPI kartları 2'li ızgara, kompakt */
+  .grid4 { grid-template-columns: 1fr 1fr !important; gap: 10px; }
+  .grid2, .grid3 { gap: 10px; }
+  .kpi { padding: 12px 13px; }
+  .kpi .t { font-size: 10px; letter-spacing: .04em; }
+  .kpi .v { font-size: 18px; margin-top: 4px; }
+  .kpi .d { font-size: 11px; }
+  .card > .hd { padding: 13px 14px 4px; }
+  .card > .bd { padding: 10px 14px 14px; }
+  .rgrid { gap: 10px; }
+  .btn.sm { height: 32px; }
+  /* satış listesi: tablo yerine kart */
+  .tbl.list thead { display: none; }
+  .tbl.list, .tbl.list tbody { display: block; }
+  .tbl.list tr { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; padding: 11px 12px; border-bottom: 1px solid var(--line); }
+  .tbl.list td { display: block; padding: 0 !important; border: 0 !important; max-width: none !important; }
+  .tbl.list td:nth-child(1) { grid-column: 1; grid-row: 1; min-width: 0; }
+  .tbl.list td:nth-child(2) { grid-column: 1 / -1; grid-row: 2; font-size: 12.5px; color: var(--text-2); }
+  .tbl.list td:nth-child(3) { grid-column: 2; grid-row: 2; justify-self: end; align-self: end; font-size: 11.5px; color: var(--muted); }
+  .tbl.list td:nth-child(2) { grid-column: 1 !important; }
+  .tbl.list td:nth-child(4) { grid-column: 2; grid-row: 1; justify-self: end; align-self: start; font-weight: 700; font-size: 15px; }
+  .tbl.list .tags { margin-top: 4px; }
+  .footbar { flex-wrap: wrap; gap: 8px; }
+  .footbar .sumtext { width: 100%; text-align: right; }
+  .toolbar { flex-wrap: wrap; gap: 8px; }
+  .toolbar .searchbar { flex: 1 1 100%; }
+  .toolbar > .btn { flex: 1; justify-content: center; }
+  .searchbar .fbtn { padding: 0 12px; font-size: 12px; }
+  .footbar { position: static; background: none; }
+  .bcard .plate { height: 110px !important; padding: 10px; overflow: hidden; }
+  .bcard .plate img, .bcard.main .plate img { max-height: 88px !important; height: auto !important; width: auto; }
+  .bcard .meta b { font-size: 15px; }
+  .select-wrap { gap: 12px; }
+  .select-page .top img { height: 34px; }
+}

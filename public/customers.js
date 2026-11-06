@@ -20,7 +20,7 @@ export async function customersPage(ctx) {
   const cats = Object.entries(S.boot.categories).flatMap(([c, subs]) => subs.map(s => `${c} / ${s}`));
   const sortTh = (k, label, cls = '') => `<th class="sortable ${cls}" data-sort="${k}">${label}${(query.get('sort') || 'total') === k ? (query.get('dir') === 'asc' ? ' ↑' : ' ↓') : ''}</th>`;
   el.innerHTML = `
-  <div class="toolbar"><div class="searchbar"><button class="fbtn ${activeN ? 'on' : ''}" id="fb">${icon('filter')} Filtrele${activeN ? ` (${activeN})` : ''} ▾</button><input id="q" placeholder="Ara… (ad, telefon, unvan)" value="${esc(query.get('q') || '')}">${icon('search')}</div>
+  <div class="toolbar"><div class="searchbar"><button class="fbtn ${activeN ? 'on' : ''}" id="fb">${icon('filter')} Filtrele${activeN ? ` (${activeN})` : ''} ▾</button><input id="q" placeholder="Ara… (ad, telefon, unvan veya #reklam, #bileme)" value="${esc(query.get('q') || '')}">${icon('search')}</div>
     <select class="in" id="saved" style="width:auto;height:46px;border-radius:999px"><option value="">Kayıtlı segmentler</option>${saved.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('')}</select></div>
   <div class="card ${activeN || query.get('open') ? '' : 'hidden'}" id="fp">
     <div class="filters">

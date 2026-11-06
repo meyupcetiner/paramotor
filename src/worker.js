@@ -28,6 +28,7 @@ export const DEFAULT_SETTINGS = {
 let READY = false;
 const enc = new TextEncoder();
 const nowISO = () => new Date().toISOString();
+const hashtags = t => (String(t || '').match(/#[\p{L}\d_]+/gu) || []).map(x => fold(x.slice(1)));
 const r2 = n => Math.round((Number(n) || 0) * 100) / 100;
 const json = (data, status = 200, headers = {}) => new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', ...headers } });
 const err = (msg, status = 400) => json({ error: msg }, status);
@@ -94,6 +95,8 @@ async function normalizeServices(env) {
     env.DB.prepare(`UPDATE invoice_lines SET product_id=?, variant_id=? WHERE (product_id IS NULL OR product_id IN (${others}) OR product_id=?) AND (${K})`).bind(kay.id, kay.vid, bil.id),
     env.DB.prepare(`UPDATE invoice_lines SET product_id=?, variant_id=? WHERE (product_id IS NULL AND (${B})) OR product_id IN (${others})`).bind(bil.id, bil.vid)
   ]);
+  for (const [pid, tag] of [[bil.id, '#bileme'], [kay.id, '#kaynak']])
+    await run(env, `UPDATE invoices SET note = TRIM(COALESCE(note,'') || ' ' || ?) WHERE id IN (SELECT invoice_id FROM invoice_lines WHERE product_id=?) AND COALESCE(note,'') NOT LIKE ?`, tag, pid, '%' + tag + '%');
 }
 
 async function seed(env) {
@@ -220,7 +223,7 @@ async function saveInvoice(env, brand, body, id = null, settings = null) {
       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, brand, seq, no, ...common, body.auto_batch_id || null, nowISO(), nowISO());
     id = r.meta.last_row_id;
   }
-  await run(env, 'UPDATE invoices SET is_promo=? WHERE id=?', body.is_promo ? 1 : 0, id);
+  await run(env, 'UPDATE invoices SET is_promo=? WHERE id=?', /#(reklam|bedelsiz|numune|hediye)/i.test(body.note || '') ? 1 : 0, id);
   const stmts = calc.lines.map(l => env.DB.prepare('INSERT INTO invoice_lines (invoice_id,sort,product_id,variant_id,description,qty,unit,unit_price,vat_rate,band_length_mm,band_meters,line_net,line_vat) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)')
     .bind(id, l.sort, l.product_id, l.variant_id, l.description, l.qty, l.unit, l.unit_price, l.vat_rate, l.band_length_mm, l.band_meters, l.line_net, l.line_vat));
   if (stmts.length) await env.DB.batch(stmts);
@@ -272,7 +275,7 @@ export const SEGMENT_HELP = R => ({
 
 async function customerAggregates(env, brand, settings) {
   const custs = await all(env, 'SELECT * FROM customers WHERE brand_id=?', brand);
-  const sales = (await loadSales(env, [brand])).filter(i => !i.is_promo);
+  const all0 = await loadSales(env, [brand]); const sales = all0;
   const R = { ...DEFAULT_SETTINGS.segment_rules, ...(settings.segment_rules || {}) };
   const today = new Date().toISOString().slice(0, 10);
   const map = new Map(custs.map(c => [c.id, { ...c, order_count: 0, total: 0, net: 0, first_order: null, last_order: null, dates: [], sources: {}, payments: {}, products: {}, categories: {} }]));
@@ -287,8 +290,10 @@ async function customerAggregates(env, brand, settings) {
       if (cat) c.categories[cat] = (c.categories[cat] || 0) + (l.line_net || 0);
     }
   }
+  for (const inv of all0) { const c = map.get(inv.customer_id); if (!c) continue; c._tags ||= new Set(hashtags(c.note)); for (const t of hashtags(inv.note)) c._tags.add(t); }
   const top = o => { const e = Object.entries(o).sort((a, b) => b[1] - a[1])[0]; return e ? e[0] : null; };
   return [...map.values()].map(c => {
+    c.tags = [...(c._tags || new Set(hashtags(c.note)))].filter(Boolean); delete c._tags;
     c.dates.sort();
     c.first_order = c.dates[0] || null; c.last_order = c.dates[c.dates.length - 1] || null;
     c.avg_gap = c.dates.length > 1 ? Math.round(daysBetween(c.first_order, c.last_order) / (c.dates.length - 1)) : null;
@@ -310,7 +315,8 @@ function filterCustomers(list, q) {
   const num = k => Number(q.get(k));
   const multi = k => (q.get(k) || '').split(',').filter(Boolean);
   return list.filter(c => {
-    if (has('q')) { const s = fold(q.get('q')); const d = s.replace(/\D/g, ''); if (!fold(c.name).includes(s) && !(d.length >= 3 && String(c.phone || '').includes(d)) && !fold(c.official_title).includes(s)) return false; }
+    if (has('q') && /^#/.test(q.get('q').trim())) { const ts = q.get('q').trim().split(/\s+/).filter(x => x.startsWith('#')).map(x => fold(x.slice(1))); if (!ts.every(t => (c.tags || []).some(x => x.startsWith(t)))) return false; }
+    else if (has('q')) { const s = fold(q.get('q')); const d = s.replace(/\D/g, ''); if (!fold(c.name).includes(s) && !(d.length >= 3 && String(c.phone || '').includes(d)) && !fold(c.official_title).includes(s)) return false; }
     if (has('il') && !multi('il').includes(c.il || '')) return false;
     if (has('ilce') && !multi('ilce').includes(c.ilce || '')) return false;
     if (has('min_total') && c.total < num('min_total')) return false;
@@ -601,7 +607,7 @@ async function api(req, env, url) {
     if (q.get('category')) invs = invs.filter(i => i.lines.some(l => `${l.category} / ${l.subcategory}`.startsWith(q.get('category'))));
     if (q.get('auto')) invs = invs.filter(i => String(i.auto_batch_id || '') === q.get('auto'));
     if (q.get('first')) { await markFirstOrders(env, invs, brands); invs = invs.filter(i => String(i._isFirst ? 1 : 0) === q.get('first')); }
-    if (q.get('q')) { const s = fold(q.get('q')); invs = invs.filter(i => fold([i.title, i.cust_name, i.invoice_no, i.cust_phone, i.cust_il, i.cust_ilce, ...i.lines.map(l => l.description)].join(' ')).includes(s)); }
+    if (q.get('q')) { const s = fold(q.get('q')); invs = invs.filter(i => fold([i.title, i.cust_name, i.invoice_no, i.cust_phone, i.cust_il, i.cust_ilce, i.note, ...i.lines.map(l => l.description)].join(' ')).includes(s)); }
     invs.sort((a, b) => (b.date + String(b.id).padStart(9, '0')).localeCompare(a.date + String(a.id).padStart(9, '0')));
     const summary = { count: invs.length, subtotal: r2(invs.reduce((a, i) => a + i.subtotal, 0)), vat: r2(invs.reduce((a, i) => a + i.vat_total, 0)), total: r2(invs.reduce((a, i) => a + i.total, 0)) };
     const page = Math.max(1, Number(q.get('page') || 1)), per = Math.min(500, Number(q.get('per') || 25));

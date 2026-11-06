@@ -480,6 +480,11 @@ function parseWA(m, idx, sources, payments, reps = []) {
   if (o.delivery) notes.unshift(o.delivery);
   if (o.email) notes.push('E-posta: ' + o.email);
   if (o.rep_note) notes.push(`Temsilci notu: ${o.rep_note}`);
-  o.note = [...new Set(notes.map(x => x.trim()).filter(Boolean))].join(' · ');
+  const tags = [];
+  if (o.promo) { if (/reklam/i.test(m.text)) tags.push('#reklam'); if (/bedelsiz|[uü]cretsiz|hediye/i.test(m.text)) tags.push('#bedelsiz'); if (/numune/i.test(m.text)) tags.push('#numune'); if (!tags.length) tags.push('#bedelsiz'); }
+  if (o.items.some(it => it.service && /bileme|bilet|di[şs]\s*a[çc]|tamir|torna/i.test(it.raw_text || ''))) tags.push('#bileme');
+  if (o.items.some(it => it.service && /kaynak|kaynat|kopan/i.test(it.raw_text || ''))) tags.push('#kaynak');
+  const rest2 = [...new Set(notes.map(x => x.trim()).filter(Boolean))].filter(x => !/^(reklam|bedelsiz|hediye|ucretsiz|numune)(\s*(icin|olarak|gonderim\w*))?$/.test(fold(x).replace(/[^a-z ]/g, '').trim()) && !/^Çıkma \(ikinci el\)/.test(x));
+  o.note = [tags.join(' '), rest2.join(' · ')].filter(Boolean).join(' · ');
   return o;
 }

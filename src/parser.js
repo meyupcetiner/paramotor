@@ -62,6 +62,7 @@ export function findIlIlce(text) {
 
 function detectPayment(t, names) {
   const f = fold(t);
+  if (/kontroll?u|ptt\s*kontrol/.test(f)) return pick(names, 'Kapıda Kontrollü');
   if (/kapida|kapıda/.test(f)) {
     if (/kart|kredi|pos/.test(f)) return pick(names, 'Kapıda Kredi Kartı');
     if (/nakit|cash/.test(f)) return pick(names, 'Kapıda Nakit');
@@ -283,6 +284,7 @@ function isRepToken(txt, reps) {
 }
 function payFrom(t, payments) {
   const l = fold(t);
+  if (/kontroll?u|ptt\s*kontrol/.test(l)) return pick(payments, 'Kapıda Kontrollü');
   if (/kapida/.test(l)) { if (/kart|kredi|pos/.test(l)) return pick(payments, 'Kapıda Kredi Kartı'); if (/nakit/.test(l)) return pick(payments, 'Kapıda Nakit'); return 'Belirsiz'; }
   if (/havale|eft|iban|dekont|odeme geldi/.test(l)) return pick(payments, 'Havale');
   if (/pesin/.test(l)) return pick(payments, 'Havale');
@@ -341,7 +343,7 @@ function parseWA(m, idx, sources, payments, reps = []) {
       const src = SRC_MAP.find(([re]) => re.test(mm[1])); if (src && sources.includes(src[1])) o.source = src[1];
       if (/^ma[gğ]aza/i.test(mm[1])) o.store = true;
       o.order_total = parseMoney(mm[3]); seenTotal = true;
-      if (mm[2]) { const inner = mm[2].slice(1, -1); if (EXCH_RE.test(inner)) o.exchange = true; notes.push(inner); }
+      if (mm[2]) { const inner = mm[2].slice(1, -1); if (EXCH_RE.test(inner)) o.exchange = true; const pp = payFrom(inner, payments); if (pp !== 'Belirsiz') o.payment = pp; const onlyPay = !fold(inner).replace(/ptt|kapida|kontroll?u|nakit|kredi|kart[ıi]?|havale|eft|odeme|ile|[^a-z]/g, '').trim(); if (!(pp !== 'Belirsiz' && onlyPay)) notes.push(inner); }
       let tail = (mm[4] || '').trim();
       const rp = tail.match(/\(([^)]+)\)/g) || [];
       for (const x of rp) { const t = x.slice(1, -1); if (!o.rep && isRepToken(t, reps)) takeRep(t); else notes.push(t); }

@@ -76,7 +76,7 @@ function normTpi(s) { return String(s || '').replace(/\s/g, '').replace(/,/g, '.
 // catalog: [{id, product_id, label, diameter, thickness, bore, teeth, width, tpi, length, p: {name, mfr, category, subcategory, is_band}}]
 export function matchItem(item, catalog) {
   const raw = [item.raw_text, item.product_hint, item.brand_hint].filter(Boolean).join(' ');
-  const t = fold(raw).replace(/dry\s*-?\s*cut/g, 'dry cut').replace(/kuru\s*kesim/g, 'dry cut').replace(/martin\s*-?\s*mill?er/g, 'schuster');
+  const t = fold(raw).replace(/dry\s*-?\s*cut/g, 'dry cut').replace(/kuru\s*kesim/g, 'dry cut').replace(/martin\s*-?\s*mill?er/g, 'schuster sharper ahsap serit');
   const dims = { ...extractDims(item.raw_text || ''), ...strip(item) };
   if (dims.width && dims.teeth != null && !dims.tpi && !dims.diameter) { dims.tpi = String(dims.teeth); delete dims.teeth; } // şeritte "14z" = 14 TPI
   let kind = item.kind && item.kind !== 'belirsiz' ? item.kind : null;
@@ -117,7 +117,7 @@ export function matchItem(item, catalog) {
     // marka belirtilmemişse öncelik sırası: Kronberg > Onci (iş kuralı), eşitlik bozucu çok küçük puan
     if (!brand) s += ({ Kronberg: 0.3, Onci: 0.2 })[p.mfr] || 0;
     if ((!brand || brand === 'junior') && !lines.length && p.subcategory === 'Bimetal' && p.mfr === 'Junior') s += /multicut/i.test(p.name) ? 14 : 4;
-    if (brand === 'schuster' && !lines.length && p.subcategory === 'Bimetal' && /signier/i.test(p.name)) s += 14; // Schuster/Martin Miller bimetal varsayılan: Signier 4HX // iş kuralı: markasız bimetal = Junior (Multicut)
+    if (brand === 'schuster' && !lines.length && p.subcategory === 'Bimetal' && /signier/i.test(p.name)) s += 14; // Schuster bimetal, seri yazmıyorsa: Signier 4HX // iş kuralı: markasız bimetal = Junior (Multicut)
     if (/dekupaj/.test(t) && isBand && v.width > 13) s -= 30; // dekupaj = 13 mm'ye kadar bimetal
     scored.push({ v, s, why });
   }

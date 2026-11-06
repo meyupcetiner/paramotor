@@ -20,9 +20,21 @@ function playIntro() {
     let finished = false;
     const done = () => { if (finished) return; finished = true; ss('pm_intro_seen', '1'); el.classList.add('done'); setTimeout(() => { el.classList.add('hidden'); }, 420); res(); };
     el.querySelector('.skip').onclick = done;
-    const imgs = ['/img/intro-blade.svg', '/img/intro-badge.png'].map(u => new Promise(r => { const i = new Image(); i.onload = i.onerror = r; i.src = u; }));
-    const start = () => { requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('go'))); setTimeout(done, 2450); };
+    const imgs = ['/img/pm-title.png', '/img/pm-sub.png', '/img/pm-glider.png'].map(u => new Promise(r => { const i = new Image(); i.onload = i.onerror = r; i.src = u; }));
+    const start = () => { requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('go'))); setTimeout(done, 2650); };
     Promise.race([Promise.all(imgs), new Promise(r => setTimeout(r, 1500))]).then(() => setTimeout(start, 150));
+  });
+}
+
+// Testeresan (genel muhasebe) seçilince logonun animasyonu
+function playTesteresan() {
+  return new Promise(res => {
+    const el = document.getElementById('intro-ts'); el.classList.remove('hidden', 'go', 'done');
+    let finished = false;
+    const done = () => { if (finished) return; finished = true; el.classList.add('done'); setTimeout(() => { el.classList.add('hidden'); el.classList.remove('go'); }, 420); res(); };
+    el.onclick = done;
+    const imgs = ['/img/intro-blade.svg', '/img/intro-badge.png'].map(u => new Promise(r => { const i = new Image(); i.onload = i.onerror = r; i.src = u; }));
+    Promise.race([Promise.all(imgs), new Promise(r => setTimeout(r, 800))]).then(() => { requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('go'))); setTimeout(done, 2400); });
   });
 }
 
@@ -64,6 +76,7 @@ async function selectPage() {
     <a class="bcard main" href="#/genel" data-b="all"><div class="plate"><img src="/img/testeresan.png" alt="TESTERESAN"></div><div class="meta"><div><b>TESTERESAN · Genel Muhasebe</b><div class="muted small">Üç markanın birleşik görünümü</div></div><div class="k" data-k="all"><div>—</div><div class="muted small">bu ay</div></div></div></a>
     <div class="brand-row">${b.brands.map(x => `<a class="bcard" href="#/b/${x.id}/faturalar" data-b="${x.id}"><div class="plate">${x.logo ? `<img src="${esc(x.logo)}" alt="${esc(x.name)}">` : `<span class="ph">${esc(x.name)}</span>`}</div><div class="meta"><div><b>${esc(x.name)}</b><div class="muted small">Muhasebe paneli</div></div><div class="k" data-k="${x.id}"><div>—</div><div class="muted small">bu ay</div></div></div></a>`).join('')}</div>
   </div></div>`;
+  root.querySelector('.bcard.main').onclick = async e => { e.preventDefault(); const go = playTesteresan(); setTimeout(() => { location.hash = '#/genel'; }, 1900); await go; };
   root.querySelector('#lo').onclick = logout;
   root.querySelector('#th').onclick = () => { toggleTheme(); selectPage(); };
   try {

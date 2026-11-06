@@ -1,4 +1,4 @@
-// PARAMOTOR — Cloudflare Worker (API + statik dosyalar). Veri: D1 (binding: DB). Görseller (opsiyonel): R2 (binding: UPLOADS).
+// ZEPLİN — Cloudflare Worker (API + statik dosyalar). Veri: D1 (binding: DB). Görseller (opsiyonel): R2 (binding: UPLOADS).
 import { SCHEMA } from './schema.js';
 import { expandCatalog, CATEGORIES } from './catalog.js';
 import { matchItem, fold } from './match.js';

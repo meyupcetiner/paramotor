@@ -1,4 +1,4 @@
-# PARAMOTOR — Detaylı Muhasebe Analiz Programı
+# ZEPLİN — Detaylı Muhasebe Analiz Programı
 
 Testeresan'ın 3 markası (testere.com.tr, Testere Ustası, Testere Fabrikası) için Paraşüt düzeninde, Envato koyu tema görünümünde satış / gelir-gider / müşteri analizi paneli. WhatsApp sipariş mesajlarından ve ekran görüntülerinden otomatik fatura oluşturur.
 

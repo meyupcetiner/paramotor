@@ -1,4 +1,4 @@
-/* PARAMOTOR — tasarım jetonları: Paramotor logosu (#5FFF00 yeşil, #3019E5 mavi, #191919 zemin) + Envato koyu tema dili + Paraşüt düzeni */
+/* ZEPLİN — tasarım jetonları: Zeplin logosu (#5FFF00 yeşil, #3019E5 mavi, #191919 zemin) + Envato koyu tema dili + Paraşüt düzeni */
 html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 :root {
   --font: "Inter Tight", "Inter", "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
@@ -46,19 +46,23 @@ img { max-width: 100%; }
 #intro, #intro-ts { position: fixed; inset: 0; display: grid; place-items: center; z-index: 100; transition: opacity .4s ease; }
 #intro-ts { background: #fff; }
 #intro { background: #141414; overflow: hidden; }
-#intro .pstage { position: relative; width: min(76vw, 600px); aspect-ratio: 1012/258; }
-#intro .plogo { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; transform: scale(.97); will-change: opacity, transform; }
+#intro .pstage { position: relative; width: min(80vw, 640px); aspect-ratio: 1000/205; }
+#intro .ztext { position: absolute; left: 0; top: 0; width: 62.4%; height: 100%; opacity: 0; transform: scale(.97); will-change: opacity, transform; }
+#intro .zship { position: absolute; left: 62.4%; top: 0; width: 37.6%; height: 100%; opacity: 0; transform: translateX(-18%); will-change: opacity, transform; }
 #intro .pglow { position: absolute; left: -25%; right: -25%; top: -90%; bottom: -90%; background: radial-gradient(closest-side, rgba(95, 255, 0, .22), rgba(95, 255, 0, .07) 45%, transparent 72%); opacity: 0; transform: scale(.6); will-change: opacity, transform; }
-#intro .pshine { position: absolute; inset: 0; overflow: hidden; -webkit-mask: url(/img/paramotor-logo.png) center/100% 100% no-repeat; mask: url(/img/paramotor-logo.png) center/100% 100% no-repeat; }
+#intro .pshine { position: absolute; left: 0; top: 0; width: 62.4%; height: 100%; overflow: hidden; -webkit-mask: url(/img/zeplin-intro-text.png) center/100% 100% no-repeat; mask: url(/img/zeplin-intro-text.png) center/100% 100% no-repeat; }
 #intro .pshine i { position: absolute; top: 0; bottom: 0; left: 0; width: 28%; background: linear-gradient(100deg, transparent, rgba(255, 255, 255, .5), transparent); transform: translateX(-130%) skewX(-16deg); will-change: transform; }
 #intro.go .pglow { animation: pg-glow 1.6s cubic-bezier(.2, .7, .2, 1) both; }
-#intro.go .plogo { animation: pg-on 1.25s cubic-bezier(.25, .6, .25, 1) .15s both; }
+#intro.go .ztext { animation: pg-on 1.25s cubic-bezier(.25, .6, .25, 1) .15s both; }
+#intro.go .zship { animation: zp-in 1.3s cubic-bezier(.2, .7, .2, 1) .35s both, zp-float 2.4s ease-in-out 1.65s infinite; }
 #intro.go .pshine i { animation: pg-shine 1s ease-in-out 1.15s both; }
 #intro.go .pstage { animation: pg-out .5s ease-in 2.25s both; }
 @keyframes pg-glow { 0% { opacity: 0; transform: scale(.6); } 60% { opacity: 1; } 100% { opacity: .75; transform: scale(1); } }
 @keyframes pg-on { 0% { opacity: 0; transform: scale(.97); } 35% { opacity: .55; } 45% { opacity: .4; } 100% { opacity: 1; transform: scale(1); } }
 @keyframes pg-shine { from { transform: translateX(-130%) skewX(-16deg); } to { transform: translateX(420%) skewX(-16deg); } }
 @keyframes pg-out { to { opacity: 0; transform: scale(1.02); } }
+@keyframes zp-in { from { opacity: 0; transform: translateX(-18%); } to { opacity: 1; transform: translateX(0); } }
+@keyframes zp-float { 0%, 100% { opacity: 1; transform: translate(0, 0); } 50% { opacity: 1; transform: translate(1.5%, -5%); } }
 #intro-ts .stage { position: relative; width: min(72vw, 540px); aspect-ratio: 700/438; }
 #intro-ts .blade { position: absolute; left: 20.07%; top: 2.17%; width: 60%; height: 95.89%; opacity: 0; transform: scale(.55) rotate(-300deg); will-change: transform, opacity; }
 #intro-ts .badge { position: absolute; left: 1.4286%; top: 35.845%; width: 97.143%; height: 28.539%; clip-path: inset(0 50% 0 50% round 999px); will-change: clip-path, transform; filter: drop-shadow(0 6px 14px rgba(20, 40, 90, .18)); }
@@ -75,7 +79,7 @@ img { max-width: 100%; }
 @keyframes pm-shine { from { background-position: 160% 0; } to { background-position: -60% 0; } }
 @keyframes pm-out { to { transform: scale(1.06); opacity: 0; filter: blur(2px); } }
 #intro .skip { position: absolute; right: 22px; bottom: 22px; border: 1px solid #333; background: transparent; color: #aaa; border-radius: var(--radius-pill); padding: 7px 16px; cursor: pointer; font-size: 13px; }
-@media (prefers-reduced-motion: reduce) { #intro-ts .blade, #intro-ts .badge, #intro-ts .shine, #intro-ts .stage, #intro .plogo, #intro .pglow, #intro .pshine i, #intro .pstage { animation-duration: .01s !important; animation-delay: 0s !important; animation-iteration-count: 1 !important; } }
+@media (prefers-reduced-motion: reduce) { #intro-ts .blade, #intro-ts .badge, #intro-ts .shine, #intro-ts .stage, #intro .ztext, #intro .zship, #intro .pglow, #intro .pshine i, #intro .pstage { animation-duration: .01s !important; animation-delay: 0s !important; animation-iteration-count: 1 !important; } }
 
 /* ---------- Giriş / şifre ---------- */
 .auth { min-height: 100vh; display: grid; place-items: center; padding: 24px; background: radial-gradient(1200px 500px at 50% -10%, rgba(48, 25, 229, .16), transparent 60%), var(--bg); }
@@ -86,7 +90,7 @@ img { max-width: 100%; }
 /* ---------- Marka seçimi ---------- */
 .select-page { min-height: 100vh; padding: 36px 20px 60px; background: radial-gradient(1000px 420px at 50% -8%, rgba(48, 25, 229, .14), transparent 60%), var(--bg); }
 .select-page .top { display: flex; justify-content: space-between; align-items: center; max-width: 1040px; margin: 0 auto 36px; }
-.select-page .top img { height: 46px; }
+.select-page .top img { height: 40px; }
 .select-wrap { max-width: 1040px; margin: 0 auto; display: grid; gap: 20px; }
 .bcard { background: var(--surface); border: 1px solid var(--line); border-radius: 20px; cursor: pointer; overflow: hidden; display: flex; flex-direction: column; transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease; text-decoration: none; }
 .bcard:hover, .bcard:focus-visible { transform: translateY(-3px); border-color: var(--accent); box-shadow: 0 14px 40px rgba(48, 25, 229, .25); outline: none; }
@@ -108,8 +112,12 @@ img { max-width: 100%; }
 .app.collapsed { --side-w: 72px; }
 .side { position: sticky; top: 0; height: 100vh; background: var(--bg-2); border-right: 1px solid var(--line); display: flex; flex-direction: column; padding: 16px 12px; gap: 4px; overflow-y: auto; }
 .side .logo { display: flex; align-items: center; justify-content: space-between; padding: 4px 6px 14px; }
-.side .logo img.full { height: 42px; }
-.side .logo img.icon { height: 32px; display: none; }
+.side .logo img.full { height: 34px; }
+.lg-l { display: none !important; }
+:root[data-theme="light"] .lg-d { display: none !important; }
+:root[data-theme="light"] .lg-l { display: inline-block !important; }
+:root[data-theme="light"] .app.collapsed .side .logo img.full { display: none !important; }
+.side .logo img.icon { width: 40px; height: auto; display: none; object-fit: contain; }
 .app.collapsed .side .logo img.full { display: none; }
 .app.collapsed .side .logo img.icon { display: block; }
 .side .brandchip { display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); margin-bottom: 10px; cursor: pointer; text-decoration: none; }

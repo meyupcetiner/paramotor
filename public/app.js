@@ -1,4 +1,4 @@
-// Paramotor — uygulama kabuğu: giriş animasyonu, kimlik, marka seçimi, yönlendirici, yan menü
+// Zeplin — uygulama kabuğu: giriş animasyonu, kimlik, marka seçimi, yönlendirici, yan menü
 import { S, api, esc, icon, toast, money, int, today, rangePreset } from './core.js';
 import { invoicesPage, invoiceForm } from './invoices.js';
 import { autoPage } from './auto.js';
@@ -43,7 +43,7 @@ function playTesteresan() {
 function authScreen(mode) {
   shellKey = null;
   root.innerHTML = `<div class="auth"><form class="box" autocomplete="on">
-    <img src="/img/paramotor-logo.png" alt="Paramotor">
+    <img class="lg lg-d " src="/img/zeplin-logo.png" alt="Zeplin"><img class="lg lg-l " src="/img/zeplin-logo-light.png" alt="Zeplin">
     <h2>${mode === 'setup' ? 'İlk kurulum — panel şifresini belirleyin' : 'Detaylı Muhasebe Analiz Programı'}</h2>
     <div class="field"><span>${mode === 'setup' ? 'Yeni şifre (en az 6 karakter)' : 'Şifre'}</span><input class="in" type="password" name="password" autocomplete="${mode === 'setup' ? 'new-password' : 'current-password'}" required autofocus></div>
     ${mode === 'setup' ? '<div class="field" style="margin-top:10px"><span>Şifre (tekrar)</span><input class="in" type="password" name="password2" autocomplete="new-password" required></div>' : ''}
@@ -72,7 +72,7 @@ async function selectPage() {
   shellKey = null;
   const b = S.boot;
   const [from, to] = rangePreset('month');
-  root.innerHTML = `<div class="select-page"><div class="top"><img src="/img/paramotor-logo.png" alt="Paramotor"><div class="row"><button class="btn ghost icon" id="th" title="Tema">${icon(document.documentElement.dataset.theme === 'light' ? 'moon' : 'sun')}</button><button class="btn ghost" id="lo">${icon('out')}<span>Çıkış</span></button></div></div>
+  root.innerHTML = `<div class="select-page"><div class="top"><span class="toplogo"><img class="lg lg-d " src="/img/zeplin-logo.png" alt="Zeplin"><img class="lg lg-l " src="/img/zeplin-logo-light.png" alt="Zeplin"></span><div class="row"><button class="btn ghost icon" id="th" title="Tema">${icon(document.documentElement.dataset.theme === 'light' ? 'moon' : 'sun')}</button><button class="btn ghost" id="lo">${icon('out')}<span>Çıkış</span></button></div></div>
   <div class="select-wrap">
     <a class="bcard main" href="#/genel" data-b="all"><div class="plate"><img src="/img/testeresan.png" alt="TESTERESAN"></div><div class="meta"><div><b>TESTERESAN · Genel Muhasebe</b><div class="muted small">Üç markanın birleşik görünümü</div></div><div class="k" data-k="all"><div>—</div><div class="muted small">bu ay</div></div></div></a>
     <div class="brand-row">${b.brands.map(x => `<a class="bcard" href="#/b/${x.id}/faturalar" data-b="${x.id}"><div class="plate">${x.logo ? `<img src="${esc(x.logo)}" alt="${esc(x.name)}">` : `<span class="ph">${esc(x.name)}</span>`}</div><div class="meta"><div><b>${esc(x.name)}</b><div class="muted small">Muhasebe paneli</div></div><div class="k" data-k="${x.id}"><div>—</div><div class="muted small">bu ay</div></div></div></a>`).join('')}</div>
@@ -122,7 +122,7 @@ function shell(brand) {
   const collapsed = ls('pm_side') === '1';
   root.innerHTML = `<div class="app ${collapsed ? 'collapsed' : ''}" id="app">
     <aside class="side">
-      <div class="logo"><a href="#/sec" title="Marka seçimi"><img class="full" src="/img/paramotor-logo.png" alt="Paramotor"><img class="icon" src="/img/paramotor-icon.png" alt=""></a><button class="btn ghost sm icon" id="col" title="Menüyü daralt">${icon('side')}</button></div>
+      <div class="logo"><a href="#/sec" title="Marka seçimi"><img class="lg lg-d full" src="/img/zeplin-logo.png" alt="Zeplin"><img class="lg lg-l full" src="/img/zeplin-logo-light.png" alt="Zeplin"><img class="icon" src="/img/zeplin-mark.png" alt="Zeplin"></a><button class="btn ghost sm icon" id="col" title="Menüyü daralt">${icon('side')}</button></div>
       <a class="brandchip" href="#/sec" title="Marka değiştir"><span class="dot" style="background-image:url('${esc(b ? b.logo : '/img/testeresan.png')}')"></span><div><b>${esc(b ? b.name : 'TESTERESAN')}</b><span>${b ? 'Marka paneli · değiştir' : 'Genel muhasebe · değiştir'}</span></div></a>
       <nav class="nav">${nav.map(([p, ic, t]) => `<a href="${base}${p}" data-p="${p}">${icon(ic)}<span>${t}</span></a>`).join('')}
         <div class="sep"></div><div class="grp">Hızlı geçiş</div>
@@ -148,7 +148,7 @@ function markNav(p) {
   app.querySelectorAll('.mtabs a[data-mp]').forEach(a => a.classList.toggle('on', p === a.dataset.mp || (p.startsWith('fatura') && a.dataset.mp === 'faturalar') || (p.startsWith('musteri') && a.dataset.mp === 'musteriler')));
   app.querySelectorAll('.side nav a[data-p]').forEach(a => a.classList.toggle('on', p === a.dataset.p || (p.startsWith('fatura/') && a.dataset.p === 'faturalar' && p !== 'fatura/yeni') || (p.startsWith('musteri/') && a.dataset.p === 'musteriler')));
 }
-export function setTitle(html) { const t = document.getElementById('title'); if (t) t.innerHTML = html; document.title = (t ? t.textContent : '') + ' · Paramotor'; }
+export function setTitle(html) { const t = document.getElementById('title'); if (t) t.innerHTML = html; document.title = (t ? t.textContent : '') + ' · Zeplin'; }
 
 // ---------- yönlendirici ----------
 let routing = 0;

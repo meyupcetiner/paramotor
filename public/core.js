@@ -1,4 +1,4 @@
-// Paramotor — çekirdek yardımcılar: API, biçimlendirme, ikonlar, bileşenler, grafikler, dışa aktarma
+// Zeplin — çekirdek yardımcılar: API, biçimlendirme, ikonlar, bileşenler, grafikler, dışa aktarma
 import { shortName } from './short.js';
 export const S = { boot: null, catalog: null, catIndex: null };
 

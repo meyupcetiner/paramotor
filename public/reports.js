@@ -11,6 +11,10 @@ function dateBar(query, extra = '') {
   return `<div class="datebar no-print"><div class="seg">${PRESETS.map(([k, l]) => `<button data-p="${k}" class="${p === k ? 'on' : ''}">${l}</button>`).join('')}</div>
     <input class="in sm" type="date" id="df" style="width:150px"> <span class="muted">–</span> <input class="in sm" type="date" id="dt" style="width:150px">${extra}</div>`;
 }
+// KDV görünümü: varsayılan KDV hariç; seçim cihazda hatırlanır
+const vatMode = query => { if (query.get('vat')) return query.get('vat'); try { return localStorage.getItem('pm_vat') || 'excl'; } catch { return 'excl'; } };
+const vatToggle = vat => `<label class="chk small no-print vat-t" title="İşaretliyse tüm tutarlar KDV dahil gösterilir"><input type="checkbox" id="vatc" ${vat === 'incl' ? 'checked' : ''}> KDV dahil</label>`;
+const bindVat = (el, query, baseHash) => { const c = $('#vatc', el); if (c) c.onchange = () => { const v = c.checked ? 'incl' : 'excl'; try { localStorage.setItem('pm_vat', v); } catch { } const q = new URLSearchParams(query); q.set('vat', v); location.hash = baseHash + '?' + q; }; };
 function readRange(query) { if (query.get('from') && query.get('to')) return [query.get('from'), query.get('to')]; return rangePreset(query.get('p') || 'month'); }
 function bindDateBar(el, query, baseHash) {
   const [f, t] = readRange(query); $('#df', el).value = f; $('#dt', el).value = t;
@@ -26,7 +30,7 @@ export async function reportsPage(ctx) {
   const all = !brand;
   setTitle(all ? 'Genel Muhasebe — Testeresan' : 'Satış Raporları');
   const [from, to] = readRange(query);
-  const vat = query.get('vat') || 'incl', cmp = query.get('cmp') !== '0';
+  const vat = vatMode(query), cmp = query.get('cmp') !== '0';
   const r = await api(`/report?brand=${brand || 'all'}&from=${from}&to=${to}&vat=${vat}&cmp=${cmp ? 1 : 0}`);
   const P = r.prev;
   const base = ctx.base + (all ? 'ozet' : 'raporlar');
@@ -55,9 +59,10 @@ export async function reportsPage(ctx) {
 
   el.innerHTML = `
   <div class="row wrap">${dateBar(query)}<span class="sp"></span>
+    ${vatToggle(vat)}
     <label class="chk small no-print"><input type="checkbox" id="cmp" ${cmp ? 'checked' : ''}> Önceki dönemle karşılaştır</label>
     <button class="btn sm no-print" id="xls">${icon('download')} Excel</button><button class="btn sm no-print" id="pdf">${icon('print')} PDF</button></div>
-  <div class="muted small">${dmy(from)} – ${dmy(to)}${P ? ` · karşılaştırma: ${dmy(P.from)} – ${dmy(P.to)}` : ''}</div>
+  <div class="muted small">${vat === 'incl' ? 'KDV dahil' : 'KDV hariç'} · ${dmy(from)} – ${dmy(to)}${P ? ` · karşılaştırma: ${dmy(P.from)} – ${dmy(P.to)}` : ''}</div>
   <div class="grid4">
     <div class="card kpi"><div class="t">Toplam satış</div><div class="v">${money(r.total)}</div><div class="d">${delta(r.total, P && P.total)}</div></div>
     <div class="card kpi"><div class="t">Sipariş sayısı</div><div class="v">${int(r.orders)}</div><div class="d">${delta(r.orders, P && P.orders)}${r.promo && r.promo.count ? ` <span class="muted">· +${int(r.promo.count)} reklam gönderimi</span>` : ''}</div></div>
@@ -86,7 +91,7 @@ export async function reportsPage(ctx) {
     <div class="card c6"><div class="hd"><h3>En çok alışveriş yapan müşteriler</h3></div><div class="bd tbl-wrap"><table class="tbl compact"><thead><tr><th>Müşteri</th>${all ? '<th>Marka</th>' : ''}<th class="r">Sipariş</th><th class="r">Toplam</th></tr></thead><tbody>${r.topCustomers.map(c => `<tr class="click" data-cust="${c.id}" data-b="${c.brand}"><td>${esc(c.name || '—')}<div class="t-sub">${esc(phoneFmt(c.phone))}</div></td>${all ? `<td class="t-sub">${esc((brandById(c.brand) || {}).name || '')}</td>` : ''}<td class="r">${c.orders}</td><td class="r">${moneyHtml(c.total)}</td></tr>`).join('') || '<tr><td colspan="4" class="empty">Veri yok</td></tr>'}</tbody></table></div></div>
     <div class="card c6"><div class="hd"><h3>Bu dönem hiç satmayan ürünler</h3><span class="sp"></span><span class="muted small">${int(r.neverSold.length)} ürün</span></div><div class="bd" style="max-height:360px;overflow:auto">${r.neverSold.map(p => `<div class="row small" style="padding:4px 0;border-bottom:1px solid var(--line)"><span class="grow">${esc(p.name)}</span><span class="muted">${esc(p.subcategory || '')}</span></div>`).join('') || '<div class="empty">Tüm ürünler satıldı</div>'}</div></div>
   </div>`;
-  bindDateBar(el, query, base);
+  bindDateBar(el, query, base); bindVat(el, query, base);
   $$('[data-vat]', el).forEach(b => b.onclick = () => { const q = new URLSearchParams(query); q.set('vat', b.dataset.vat); location.hash = base + '?' + q; });
   $('#cmp', el).onchange = e => { const q = new URLSearchParams(query); q.set('cmp', e.target.checked ? '1' : '0'); location.hash = base + '?' + q; };
   $('#pdf', el).onclick = () => window.print();
@@ -126,16 +131,17 @@ export async function pnlPage(ctx) {
   setTitle(brand ? 'Gelir-Gider Raporu' : 'Gelir-Gider Raporu — Testeresan');
   const q0 = new URLSearchParams(query); if (!q0.get('p') && !q0.get('from')) q0.set('p', 'year');
   const [from, to] = readRange(q0);
-  const d = await api(`/pnl?brand=${brand || 'all'}&from=${from}&to=${to}`);
+  const vat = vatMode(query);
+  const d = await api(`/pnl?brand=${brand || 'all'}&from=${from}&to=${to}&vat=${vat}`);
   const cats = Object.entries(d.byCategory).sort((a, b) => b[1] - a[1]);
   const AL = { ciro: 'ciro oranına göre', esit: 'eşit', manuel: 'elle girilen oranlara göre' };
-  el.innerHTML = `<div class="row wrap">${dateBar(q0)}<span class="sp"></span><a class="btn pri up" href="${ctx.base}giderler?yeni=1">+ Gider Ekle</a><button class="btn sm" id="xls">${icon('download')} Excel</button></div>
-  <div class="muted small">Gelir = satışların toplam tutarı. Ortak giderler markalara <b>${AL[d.allocation] || d.allocation}</b> dağıtılır (Ayarlar'dan değiştirilebilir).</div>
+  el.innerHTML = `<div class="row wrap">${dateBar(q0)}<span class="sp"></span>${vatToggle(vat)}<a class="btn pri up" href="${ctx.base}giderler?yeni=1">+ Gider Ekle</a><button class="btn sm" id="xls">${icon('download')} Excel</button></div>
+  <div class="muted small">Gelir = satışların ${vat === 'incl' ? 'KDV dahil' : 'KDV hariç'} toplamı. Ortak giderler markalara <b>${AL[d.allocation] || d.allocation}</b> dağıtılır (Ayarlar'dan değiştirilebilir).</div>
   <div class="grid4"><div class="card kpi"><div class="t">Gelir</div><div class="v">${money(d.income)}</div></div><div class="card kpi"><div class="t">Gider</div><div class="v">${money(d.expense)}</div></div><div class="card kpi"><div class="t">Net kâr / zarar</div><div class="v ${d.net >= 0 ? 'pos' : 'neg'}">${money(d.net)}</div></div><div class="card kpi"><div class="t">Kâr marjı</div><div class="v">${d.income ? pct(d.net / d.income) : '—'}</div></div></div>
   <div class="rgrid"><div class="card c8"><div class="hd"><h3>Aylık gelir / gider</h3></div><div class="bd">${vbars(d.months.map(m => m.month.slice(5) + '.' + m.month.slice(2, 4)), [{ name: 'Gelir', color: 'var(--accent)', values: d.months.map(m => m.income) }, { name: 'Gider', color: 'var(--danger)', values: d.months.map(m => m.expense) }], { h: 240 })}</div></div>
   <div class="card c4"><div class="hd"><h3>Gider kategorileri</h3></div><div class="bd">${hbars(cats.map(([k, v]) => ({ label: k, value: v })), { color: 'var(--danger)' })}</div></div>
   <div class="card c12"><div class="tbl-wrap"><table class="tbl compact"><thead><tr><th>Ay</th><th class="r">Sipariş</th><th class="r">Gelir</th><th class="r">Gider</th><th class="r">Net</th></tr></thead><tbody>${d.months.map(m => `<tr><td>${m.month}</td><td class="r">${int(m.orders)}</td><td class="r">${moneyHtml(m.income)}</td><td class="r">${moneyHtml(m.expense)}</td><td class="r"><b class="${m.net >= 0 ? 'pos' : 'neg'}">${money(m.net)}</b></td></tr>`).join('') || '<tr><td colspan="6" class="empty">Bu dönemde kayıt yok</td></tr>'}</tbody></table></div></div></div>`;
-  bindDateBar(el, q0, ctx.base + 'gelir-gider');
+  bindDateBar(el, q0, ctx.base + 'gelir-gider'); bindVat(el, q0, ctx.base + 'gelir-gider');
   $('#xls', el).onclick = () => exportXLS(`gelir-gider-${brand || 'testeresan'}-${from}-${to}`, [{ name: 'Aylık', headers: ['Ay', 'Sipariş', 'Gelir KDV hariç', 'Gelir KDV dahil', 'Gider', 'Net'], rows: d.months.map(m => [m.month, m.orders, m.income, m.gross, m.expense, m.net]) }, { name: 'Giderler', headers: ['Tarih', 'Kategori', 'Açıklama', 'Marka', 'Tutar', 'Pay', 'Bu görünüme düşen'], rows: d.expenses.map(e => [dmy(e.date), e.category, e.description || '', e.brand_id ? (brandById(e.brand_id) || {}).name : 'Ortak', e.amount, e.share, e.part]) }]);
 }
 
@@ -145,7 +151,8 @@ export async function expensesPage(ctx) {
   setTitle(brand ? 'Giderler' : 'Giderler — ortak ve marka giderleri');
   const q0 = new URLSearchParams(query); if (!q0.get('p') && !q0.get('from')) q0.set('p', 'year');
   const [from, to] = readRange(q0);
-  const d = await api(`/pnl?brand=${brand || 'all'}&from=${from}&to=${to}`);
+  const vat = vatMode(query);
+  const d = await api(`/pnl?brand=${brand || 'all'}&from=${from}&to=${to}&vat=${vat}`);
   el.innerHTML = `<div class="row wrap">${dateBar(q0)}<span class="sp"></span><button class="btn pri up" id="add">+ Gider Ekle</button></div>
   <div class="tbl-wrap"><table class="tbl list"><thead><tr><th>Tarih</th><th>Kategori</th><th>Açıklama</th><th>Marka</th><th class="r">Tutar</th>${brand ? '<th class="r">Bu markaya düşen</th>' : ''}</tr></thead><tbody>
   ${d.expenses.map(e => `<tr class="click" data-id="${e.id}"><td>${dmy(e.date)}</td><td>${esc(e.category)}</td><td class="t-sub">${esc(e.description || '')}</td><td>${e.brand_id ? esc((brandById(e.brand_id) || {}).name || e.brand_id) : '<span class="pill soft">ORTAK</span>'}</td><td class="r">${moneyHtml(e.amount)}</td>${brand ? `<td class="r">${moneyHtml(e.part)} <span class="muted small">${pct(e.share)}</span></td>` : ''}</tr>`).join('') || `<tr><td colspan="6"><div class="empty">Bu dönemde gider yok.</div></td></tr>`}

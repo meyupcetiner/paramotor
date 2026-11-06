@@ -22,7 +22,7 @@ function playIntro() {
     el.querySelector('.skip').onclick = done;
     // görseller çözülünce (decode) başlar: ilk karede takılma olmaz
     const imgs = [...el.querySelectorAll('img')].map(i => (i.decode ? i.decode() : Promise.resolve()).catch(() => { }));
-    const start = () => { requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('go'))); setTimeout(done, 2500); };
+    const start = () => { requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('go'))); setTimeout(done, 2750); };
     Promise.race([Promise.all(imgs), new Promise(r => setTimeout(r, 1200))]).then(start);
   });
 }
@@ -81,7 +81,8 @@ async function selectPage() {
   root.querySelector('#lo').onclick = logout;
   root.querySelector('#th').onclick = () => { toggleTheme(); selectPage(); };
   try {
-    const r = await api(`/report?brand=all&from=${from}&to=${to}`);
+    let vat = 'excl'; try { vat = localStorage.getItem('pm_vat') || 'excl'; } catch { }
+    const r = await api(`/report?brand=all&from=${from}&to=${to}&vat=${vat}`);
     const set = (k, v, n) => { const el = root.querySelector(`[data-k="${k}"]`); if (el) el.innerHTML = `<div>${money(v)}</div><div class="muted small">bu ay · ${int(n)} sipariş</div>`; };
     set('all', r.total, r.orders);
     for (const x of b.brands) set(x.id, (r.byBrand[x.id] || {}).total || 0, (r.byBrand[x.id] || {}).orders || 0);

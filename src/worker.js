@@ -447,11 +447,11 @@ async function markFirstOrders(env, invs, brands) {
 }
 
 // ---------------- Gelir-Gider ----------------
-async function pnl(env, brand, from, to, settings) {
+async function pnl(env, brand, from, to, settings, vat = 'incl') {
   const brands = brandFilter(brand);
   const sales = await all(env, `SELECT brand_id, substr(date,1,7) m, SUM(subtotal) net, SUM(total) gross, COUNT(*) n FROM invoices WHERE date>=? AND date<=? AND IFNULL(is_promo,0)=0 GROUP BY brand_id, m`, from, to);
   const exps = await all(env, 'SELECT * FROM expenses WHERE date>=? AND date<=? ORDER BY date DESC, id DESC', from, to);
-  const revByBrand = {}; for (const s of sales) revByBrand[s.brand_id] = (revByBrand[s.brand_id] || 0) + s.gross;
+  const revByBrand = {}; for (const s of sales) revByBrand[s.brand_id] = (revByBrand[s.brand_id] || 0) + s.gross; // gider payı dağıtımı her zaman brüt ciroya göre
   const totalRev = Object.values(revByBrand).reduce((a, b) => a + b, 0);
   const mode = settings.expense_allocation || 'ciro';
   const manual = settings.expense_manual_shares || {};
@@ -464,7 +464,7 @@ async function pnl(env, brand, from, to, settings) {
     return totalRev ? (revByBrand[b] || 0) / totalRev : 1 / BRANDS.length;
   };
   const months = {};
-  for (const s of sales) if (brands.includes(s.brand_id)) { (months[s.m] ||= { income: 0, gross: 0, expense: 0, orders: 0 }); months[s.m].income += s.gross; months[s.m].gross += s.gross; months[s.m].orders += s.n; }
+  for (const s of sales) if (brands.includes(s.brand_id)) { (months[s.m] ||= { income: 0, gross: 0, expense: 0, orders: 0 }); months[s.m].income += vat === 'excl' ? s.net : s.gross; months[s.m].gross += s.gross; months[s.m].orders += s.n; }
   const expRows = [];
   const byCat = {};
   for (const e of exps) {
@@ -801,7 +801,7 @@ async function api(req, env, url) {
     if (m === 'PUT') { const b = await body(req); await run(env, 'UPDATE expenses SET brand_id=?,category=?,amount=?,date=?,description=?,allocation=? WHERE id=?', b.brand_id || null, b.category || 'Diğer', Number(b.amount), b.date, b.description || null, b.allocation ? JSON.stringify(b.allocation) : null, mm[1]); return json({ ok: true }); }
     if (m === 'DELETE') { await run(env, 'DELETE FROM expenses WHERE id=?', mm[1]); return json({ ok: true }); }
   }
-  if (p === '/pnl') { const from = q.get('from') || '0000-01-01', to = q.get('to') || '9999-12-31'; return json(await pnl(env, q.get('brand'), from, to, settings)); }
+  if (p === '/pnl') { const from = q.get('from') || '0000-01-01', to = q.get('to') || '9999-12-31'; return json(await pnl(env, q.get('brand'), from, to, settings, q.get('vat') || 'incl')); }
 
   // --- raporlar ---
   if (p === '/report') {

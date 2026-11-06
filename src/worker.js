@@ -112,7 +112,8 @@ async function ensureDB(env) {
       for (const v of p.variants) if (!have.some(h => Number(h.diameter) === v.diameter && Number(h.teeth) === v.teeth)) await run(env, 'INSERT INTO variants (product_id,label,diameter,thickness,bore,teeth,sort) VALUES (?,?,?,?,?,?,?)', row.id, v.label, v.diameter, v.thickness, v.bore, v.teeth, k++);
     }
     const cat = await catalog(env);
-    const un = await all(env, "SELECT id, description FROM invoice_lines WHERE product_id IS NULL AND (description LIKE '%luklu%' OR description LIKE '%LUKLU%' OR description LIKE '%urt%' OR description LIKE '%URT%' OR description LIKE '%olden%' OR description LIKE '%OLDEN%')");
+    await run(env, "UPDATE invoice_lines SET product_id=NULL, variant_id=NULL WHERE (description LIKE '%olden%' OR description LIKE '%OLDEN%') AND product_id IN (SELECT id FROM products WHERE name NOT LIKE '%olden%')"); // Golden Line ayrı ürün
+    const un = await all(env, "SELECT id, description FROM invoice_lines WHERE (product_id IS NULL OR description LIKE '%luklu%' OR description LIKE '%LUKLU%') AND (description LIKE '%luklu%' OR description LIKE '%LUKLU%' OR description LIKE '%urt%' OR description LIKE '%URT%') AND description NOT LIKE '%olden%' AND description NOT LIKE '%OLDEN%'");
     for (const l of un) { const mt = matchItem({ raw_text: l.description }, cat); if (mt.confidence !== 'low' && mt.variant_id) await run(env, 'UPDATE invoice_lines SET product_id=?, variant_id=? WHERE id=?', mt.product_id, mt.variant_id, l.id); }
     await run(env, "INSERT INTO settings (key,value) VALUES ('migr_v6','1') ON CONFLICT(key) DO NOTHING");
   }

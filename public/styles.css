@@ -1,7 +1,7 @@
 /* ZEPLİN — tasarım jetonları: Zeplin logosu (#5FFF00 yeşil, #3019E5 mavi, #191919 zemin) + Envato koyu tema dili + Paraşüt düzeni */
 html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 :root {
-  --font: "Inter Tight", "Inter", "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
+  --font: "Inter", "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
   --font-label: var(--font);
   --mono: var(--font);
   --brand: #5FFF00;
@@ -28,7 +28,7 @@ html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; }
-body { background: var(--bg); color: var(--text); font: 14px/1.5 var(--font); -webkit-font-smoothing: antialiased; font-feature-settings: 'tnum' 1, 'cv11' 1; letter-spacing: -.005em; }
+body { background: var(--bg); color: var(--text); font: 14px/1.5 var(--font); -webkit-font-smoothing: antialiased; font-feature-settings: 'tnum' 1, 'cv11' 1; letter-spacing: -.011em; font-optical-sizing: auto; }
 a { color: inherit; }
 button, input, select, textarea { font: inherit; color: inherit; }
 img { max-width: 100%; }

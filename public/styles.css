@@ -49,15 +49,13 @@ img { max-width: 100%; }
 #intro .pstage { position: relative; width: min(80vw, 640px); aspect-ratio: 1000/205; }
 #intro .ztext { position: absolute; left: 0; top: 0; width: 62.4%; height: 100%; opacity: 0; transform: scale(.97); will-change: opacity, transform; }
 #intro .zship { position: absolute; left: 62.4%; top: 0; width: 37.6%; height: 100%; opacity: 0; transform: translateX(-18%); will-change: opacity, transform; }
-#intro .pglow { position: absolute; left: -25%; right: -25%; top: -90%; bottom: -90%; background: radial-gradient(closest-side, rgba(95, 255, 0, .22), rgba(95, 255, 0, .07) 45%, transparent 72%); opacity: 0; transform: scale(.6); will-change: opacity, transform; }
+#intro .pglow { display: none; }
 #intro .pshine { position: absolute; left: 0; top: 0; width: 62.4%; height: 100%; overflow: hidden; -webkit-mask: url(/img/zeplin-intro-text.png) center/100% 100% no-repeat; mask: url(/img/zeplin-intro-text.png) center/100% 100% no-repeat; }
 #intro .pshine i { position: absolute; top: 0; bottom: 0; left: 0; width: 28%; background: linear-gradient(100deg, transparent, rgba(255, 255, 255, .5), transparent); transform: translateX(-130%) skewX(-16deg); will-change: transform; }
-#intro.go .pglow { animation: pg-glow 1.6s cubic-bezier(.2, .7, .2, 1) both; }
 #intro.go .ztext { animation: pg-on 1.25s cubic-bezier(.25, .6, .25, 1) .15s both; }
 #intro.go .zship { animation: zp-in 1.3s cubic-bezier(.2, .7, .2, 1) .35s both, zp-float 2.4s ease-in-out 1.65s infinite; }
 #intro.go .pshine i { animation: pg-shine 1s ease-in-out 1.15s both; }
 #intro.go .pstage { animation: pg-out .5s ease-in 2.25s both; }
-@keyframes pg-glow { 0% { opacity: 0; transform: scale(.6); } 60% { opacity: 1; } 100% { opacity: .75; transform: scale(1); } }
 @keyframes pg-on { 0% { opacity: 0; transform: scale(.97); } 35% { opacity: .55; } 45% { opacity: .4; } 100% { opacity: 1; transform: scale(1); } }
 @keyframes pg-shine { from { transform: translateX(-130%) skewX(-16deg); } to { transform: translateX(420%) skewX(-16deg); } }
 @keyframes pg-out { to { opacity: 0; transform: scale(1.02); } }

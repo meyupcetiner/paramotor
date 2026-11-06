@@ -86,7 +86,10 @@ function missing(o) {
   if (!(o.items || []).length) m.push('items');
   return m;
 }
-const itemWarn = it => it.confidence !== 'ok' || (it.warnings || []).length > 0;
+const SHORT = [[/güvenle eşleşmedi/, 'Ürün bulunamadı'], [/Birden fazla varyant|Marka\/varyant/, 'Ürün emin değil'], [/Freud/, 'Freud yok, en yakını seçildi'], [/Şerit boyu/, 'Boy yok'], [/Adet mesajda net/, 'Adet belirsiz'], [/1 kabul/, 'Adet 1 sayıldı'], [/eşit bölündü/, 'Toplam eşit bölündü'], [/Çıkma/, 'Çıkma ürün'], [/sipariş toplamından/, null], [/birim mi satır/, 'Fiyat birim mi toplam mı?'], [/Fiyat mesajda yok/, 'Fiyat yok']];
+const shortWarn = w => { for (const [re, t] of SHORT) if (re.test(w)) return t; return w.replace(/^Belirsiz:\s*/, '').slice(0, 28); };
+const itemIssues = it => { const out = [...new Set((it.warnings || []).filter(w => !(/Fiyat mesajda yok/.test(w) && Number(it.unit_price))).map(shortWarn).filter(Boolean))]; if (it.confidence === 'low' && !out.includes('Ürün bulunamadı') && !it.variant_id) out.unshift('Ürün bulunamadı'); return out; };
+const itemWarn = it => itemIssues(it).length > 0;
 const orderTotal = o => (o.items || []).reduce((a, it) => a + (Number(it.qty) || 0) * (Number(it.unit_price) || 0), 0);
 
 function drawResult(ctx) {
@@ -136,13 +139,15 @@ function orderCard(o, i) {
   const chip = (txt, cls, color) => txt ? `<span class="mchip ${cls}"${color ? ` style="--c:${esc(color)}"` : ''}>${esc(txt)}</span>` : '';
   const metaHtml = [chip(dmy(o.date), 'date'), chip(src && src.name, 'src', src && src.color), chip(pay && pay.name, 'pay', pay && pay.color), chip(rp ? rp.name : (o.rep_raw ? o.rep_raw + ' (yeni)' : ''), 'rep'), chip([o.ilce, o.il].filter(Boolean).join(' / '), 'loc')].filter(Boolean).join('');
   const tags = [o.anonymous ? '<span class="pill soft">Mağaza · isimsiz</span>' : ex ? `<span class="badge-old">${ex.orders + 1}. sipariş</span>` : '', o.is_official ? '<span class="pill soft">Resmi</span>' : '', o.exchange ? '<span class="pill warn">Değişim — satış değil</span>' : '', o.duplicate ? `<span class="pill bad">Mükerrer: ${esc(o.duplicate.invoice_no)}</span>` : '', o.batch_duplicate_of !== undefined ? `<span class="pill bad">#${o.batch_duplicate_of + 1} ile aynı</span>` : ''].join('');
-  return `<div class="ocard ${o._ok && !o._off ? 'ok' : ''} ${o._off ? 'dis' : ''}" data-i="${i}">
+  const iss = [...miss.map(k => `${MISS_TR[k] || k} yok`), ...(o.items || []).flatMap((it, j) => itemIssues(it).map(t => (o.items.length > 1 ? `${j + 1}. ürün: ` : '') + t.toLowerCase()))];
+  return `<div class="ocard ${o._ok && !o._off ? 'ok' : ''} ${o._off ? 'dis' : ''} ${iss.length && !o._off ? 'chk' : ''}" data-i="${i}">
+    ${iss.length && !o._off ? `<div class="chkbar" data-open>${icon('warn')}<b>Kontrol et:</b> ${iss.map(esc).join(' · ')}</div>` : ''}
     <div class="top"><span class="num">${i + 1}</span>
       <div class="who"><input data-k="customer_name" value="${esc(o.customer_name)}" placeholder="${o.anonymous ? 'Mağaza müşterisi (isimsiz)' : 'Ad soyad'}"><div class="meta">${metaHtml} ${tags}</div></div>
       <div class="sum">${money(orderTotal(o))}${o.order_total != null && Math.abs(o.order_total - orderTotal(o)) > 1 ? `<small>mesajda ${money(o.order_total)}</small>` : ''}</div>
       <div class="row" style="gap:6px"><label class="chk-ok ${o._ok && !o._off ? 'on' : ''}"><input type="checkbox" data-a="ok" ${o._ok ? 'checked' : ''}>${icon('check')} Onayla</label><button class="btn sm ghost icon" data-a="off" title="${o._off ? 'Geri al' : 'Atla'}">${icon(o._off ? 'history' : 'x')}</button></div></div>
     <div class="items">${(o.items || []).map((it, j) => itemRow(it, j)).join('')}</div>
-    <div class="foot">${miss.map(k => `<button class="miss" data-open>${MISS_TR[k] || k}?</button>`).join('')}
+    <div class="foot">
       <details ${o._open ? 'open' : ''}><summary>${icon('pen')} Detaylar</summary></details><button class="btn sm ghost" data-a="additem">+ Ürün</button></div>
     <div class="detail ${o._open ? '' : 'hidden'}">
       <div class="dgrid">
@@ -164,15 +169,15 @@ function orderCard(o, i) {
 function itemRow(it, j) {
   const warn = itemWarn(it);
   const alts = (it.alternatives || []).filter(a => a.variant_id !== it.variant_id).slice(0, 5);
-  const w = (it.warnings || []).filter(x => !/Fiyat mesajda yok|Birim fiyat/.test(x) || !it.unit_price);
+  const issues = itemIssues(it);
   return `<div class="irow ${warn ? 'warn' : ''}" data-j="${j}">
     <div class="ac"><input class="in" data-ik="description" value="${esc(it.description)}" placeholder="Ürün ara" title="${esc(it.raw_text || '')}"></div>
     <input class="in" data-ik="qty" inputmode="decimal" value="${esc(numIn(it.qty))}" title="Adet">
     <input class="in" data-ik="unit_price" inputmode="decimal" value="${esc(numIn(it.unit_price))}" placeholder="Fiyat" title="Birim fiyat">
     <input class="in lt" data-ik="line_total" inputmode="decimal" value="${esc(numIn((Number(it.qty) || 0) * (Number(it.unit_price) || 0)))}" title="Satır toplamı">
     <button class="x" data-a="rmitem" title="Sil">${icon('x')}</button>
-    ${it.is_band ? `<div class="ihint" style="color:var(--muted)">${icon('saw')} Boy <input class="in sm" data-ik="band_length_mm" inputmode="decimal" value="${esc(numIn(it.band_length_mm))}" style="width:90px;height:28px"> mm${it.band_length_mm ? ` · ${numIn(Math.round(it.band_length_mm * (it.qty || 0) / 10) / 100)} m` : ''}</div>` : ''}
-    ${warn && (w.length || alts.length) ? `<div class="ihint">${icon('warn')} <span>“${esc(it.raw_text || '')}”${w.length ? ' — ' + esc(w[0]) : ''}</span>${alts.length ? `<select class="in" data-ik="alt"><option value="">Doğru ürünü seç…</option>${alts.map(a => `<option value="${a.variant_id}">${esc(a.name)} — ${esc(a.label)}</option>`).join('')}</select>` : ''}</div>` : ''}
+    ${it.is_band ? `<div class="ihint band">${icon('saw')} Boy <input class="in sm" data-ik="band_length_mm" inputmode="decimal" value="${esc(numIn(it.band_length_mm))}" style="width:90px;height:28px"> mm${it.band_length_mm ? ` · ${numIn(Math.round(it.band_length_mm * (it.qty || 0) / 10) / 100)} m` : ''}</div>` : ''}
+    <div class="isrc">${warn ? issues.map(t => `<span class="wtag">${esc(t)}</span>`).join('') : ''}${it.raw_text ? `<span class="raw">Mesajda: ${esc(it.raw_text)}</span>` : ''}${warn && alts.length ? `<select class="in" data-ik="alt"><option value="">Başka ürün seç…</option>${alts.map(a => `<option value="${a.variant_id}">${esc(a.name)} — ${esc(a.label)}</option>`).join('')}</select>` : ''}</div>
   </div>`;
 }
 
@@ -205,7 +210,7 @@ function bindOrder(card, o, i, cnt) {
     d.oninput = () => { it.description = d.value; it.variant_id = null; it.product_id = null; };
     const alt = row.querySelector('[data-ik=alt]'); if (alt) alt.onchange = () => { const v = variantById(alt.value); if (v) pick(v); };
     const upd = () => { const s = card.querySelector('.sum'); if (s) s.firstChild.textContent = money(orderTotal(o)); };
-    for (const k of ['qty', 'unit_price', 'band_length_mm']) { const x = row.querySelector(`[data-ik=${k}]`); if (x) x.oninput = () => { it[k] = parseNum(x.value); if (k === 'qty') it.qty_missing = false; row.querySelector('[data-ik=line_total]').value = numIn((Number(it.qty) || 0) * (Number(it.unit_price) || 0)); upd(); }; }
+    for (const k of ['qty', 'unit_price', 'band_length_mm']) { const x = row.querySelector(`[data-ik=${k}]`); if (x) { x.onchange = () => { const re = { qty: /Adet/, unit_price: /Fiyat|eşit bölündü|birim mi/, band_length_mm: /Şerit boyu/ }[k]; const before = (it.warnings || []).length; it.warnings = (it.warnings || []).filter(w => !re.test(w)); if (it.warnings.length !== before) redraw(); }; } if (x) x.oninput = () => { it[k] = parseNum(x.value); if (k === 'qty') it.qty_missing = false; row.querySelector('[data-ik=line_total]').value = numIn((Number(it.qty) || 0) * (Number(it.unit_price) || 0)); upd(); }; }
     const lt = row.querySelector('[data-ik=line_total]'); lt.oninput = () => { const t = parseNum(lt.value); if (t != null && Number(it.qty)) { it.unit_price = +(t / Number(it.qty)).toFixed(4); row.querySelector('[data-ik=unit_price]').value = numIn(it.unit_price); } upd(); };
     row.querySelector('[data-a=rmitem]').onclick = () => { o.items.splice(+row.dataset.j, 1); redraw(); };
   });

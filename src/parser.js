@@ -388,8 +388,22 @@ function parseWA(m, idx, sources, payments, reps = []) {
     rest.push(l);
   });
   // kalan satırlar: isim, telefon, adres, vergi, e-posta, kargo kodu
-  const addr = [];
+  const addr = []; let invBlock = false; const invAddr = [];
   for (let l of rest) {
+    if (/^fatura\s*(bilgi\w*|adres\w*|icin)\b/.test(fold(l.replace(/[*_:]/g, '')).trim())) { invBlock = true; o.is_official = true; continue; }
+    let vd = l.match(/V\.?\s*D\.?\s*[:.]?\s*([\p{L}][\p{L} ]*?)\s*[-,/]?\s*(?:VKN|TCKN|TC|vergi\s*no)\s*[:.]?\s*(\d[\d\s]{9,13})/iu);
+    if (vd) vd = { all: vd[0], office: vd[1], no: vd[2] };
+    else { const w = l.match(/(?:VKN|TCKN|vergi\s*no)\s*[:.]?\s*(\d[\d\s]{9,13})\s*[-,/]?\s*V\.?\s*D\.?\s*[:.]?\s*([\p{L}][\p{L} ]*)/iu); if (w) vd = { all: w[0], office: w[2], no: w[1] }; }
+    if (vd) { o.tax_office = vd.office.trim(); o.tax_no = vd.no.replace(/\s/g, ''); o.is_official = true; l = l.replace(vd.all, '').trim(); if (!l) continue; }
+    const vd2 = l.match(/^(?:V\.?\s*D\.?|vergi\s*dairesi)\s*[:.]?\s*([\p{L}][\p{L} .]*)$/iu);
+    if (vd2) { o.tax_office = vd2[1].trim(); o.is_official = true; continue; }
+    if (invBlock) {
+      if (EMAIL_RE.test(l)) { o.email = l.match(EMAIL_RE)[0]; continue; }
+      if (!TAX_RE.test(l) && !PHONE_RE.test(l) && (PHONE_RE.lastIndex = 0, true) && !o._title && !/\d{2,}/.test(l)) { o._title = l.replace(/[*_]/g, '').trim(); continue; }
+      PHONE_RE.lastIndex = 0;
+      if (!TAX_RE.test(l) && !PHONE_RE.test(l)) { PHONE_RE.lastIndex = 0; invAddr.push(l); continue; }
+      PHONE_RE.lastIndex = 0;
+    }
     const em = l.match(EMAIL_RE); if (em) { o.email = em[0]; l = l.replace(em[0], '').trim(); if (!l) continue; }
     const tx = l.match(TAX_RE);
     if (tx) { o.tax_no = (tx[2] || tx[3] || '').replace(/\s/g, ''); o.tax_office = (tx[1] || tx[4] || '').replace(/^\(|[:.]$/g, '').trim(); o.is_official = true; l = l.replace(tx[0], '').trim(); if (!l) continue; }
@@ -416,7 +430,9 @@ function parseWA(m, idx, sources, payments, reps = []) {
   }
   if (!o.customer_name && pdfName) o.customer_name = pdfName;
   o.address = addr.join(' ').replace(/\s+/g, ' ').trim();
-  if (o.customer_name && COMPANY_RE.test(o.customer_name)) o.official_title = o.customer_name;
+  if (o._title) { o.official_title = o._title; delete o._title; }
+  if (invAddr.length) notes.push('Fatura adresi: ' + invAddr.join(' '));
+  if (!o.official_title && o.customer_name && COMPANY_RE.test(o.customer_name)) o.official_title = o.customer_name;
   if (o.is_official && !o.official_title) o.official_title = o.customer_name;
   const loc = o.address ? findIlIlce(o.address) : { il: null, ilce: null };
   o.il = loc.il || ''; o.ilce = loc.ilce || '';
@@ -432,8 +448,8 @@ function parseWA(m, idx, sources, payments, reps = []) {
   }
   if (o.source === 'Belirsiz') o.uncertain_fields.push('source');
   // iş kuralı: ödeme şekli hiç yazılmamış kargo siparişi = Havale
-  if (o.payment === 'Belirsiz' && !o.is_official && !o.anonymous && !o.store && !/kap[ıi]da/i.test(m.text) && payments.includes('Havale')) o.payment = 'Havale';
-  if (o.payment === 'Belirsiz' && !o.is_official && !o.anonymous && !o.store) o.uncertain_fields.push('payment');
+  if (o.payment === 'Belirsiz' && !o.anonymous && !o.store && !/kap[ıi]da/i.test(m.text) && payments.includes('Havale')) o.payment = 'Havale';
+  if (o.payment === 'Belirsiz' && !o.anonymous && !o.store) o.uncertain_fields.push('payment');
   if (!o.items.length) o.uncertain_fields.push('items');
   if (!o.date) o.uncertain_fields.push('date');
   // fiyatlar: tek ürün + toplam → satır toplamı; çok ürün → satır fiyatları, eksik tek satırı toplamdan tamamla
@@ -444,8 +460,13 @@ function parseWA(m, idx, sources, payments, reps = []) {
     const missing = o.items.filter(it => it.line_total == null);
     const sum = priced.reduce((a, it) => a + it.line_total, 0);
     if (missing.length === 1) missing[0].line_total = Math.max(0, o.order_total - sum);
-    else if (missing.length > 1 && !priced.length) { // fiyatsız çok ürün: toplamı ilk satıra yaz, diğerleri 0 (işaretli)
-      missing.forEach((it, k) => { it.line_total = k === 0 ? o.order_total : 0; it.uncertain.push('price_split'); });
+    else if (missing.length > 1 && !priced.length) { // fiyatsız çok ürün: toplam adet başına eşit bölünür (dişi farklı aynı ürün aynı fiyat)
+      const units = missing.reduce((a, it) => a + (Number(it.qty) || 1), 0);
+      const per = Math.round(o.order_total / units * 100) / 100;
+      const key = it => fold(it.spec || it.raw_text || '').replace(/,/g, '.').replace(/tpi/g, ' tpi').replace(/\d+(?:[.,]\d+)?\s*\/\s*\d+(?:[.,]\d+)?|\d+\s*tpi|\bz\s*\d+|\d+\s*(?:z|dis)\b/g, '').replace(/\btpi\b/g, '').replace(/[^a-z0-9.]+/g, ' ').trim();
+      const same = new Set(missing.map(key)).size === 1;
+      let acc = 0;
+      missing.forEach((it, k) => { const q = Number(it.qty) || 1; it.line_total = k === missing.length - 1 ? Math.round((o.order_total - acc) * 100) / 100 : Math.round(per * q * 100) / 100; acc += it.line_total; if (!same) it.uncertain.push('price_even'); });
     } else if (missing.length > 1) missing.forEach(it => it.uncertain.push('price'));
     else if (o.vat_mode !== 'excl' && Math.abs(sum - o.order_total) > 1) notes.push(`Satır fiyatları toplamı (${sum}) mesajdaki toplamdan (${o.order_total}) farklı.`);
   }

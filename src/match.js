@@ -13,7 +13,7 @@ const SUB_WORDS = [
   ['Alüminyum-PVC', /\b(aluminyum|alu|alum|pvc|plastik|profil aluminyum)/],
   ['Betopan', /\b(betopan|fiber|fibercement|pcd)/],
   ['Et-Kemik', /\b(et|kemik|balik|kasap|bone|bonemaster)\b/],
-  ['Bimetal', /\b(bimetal|bi-metal|bi metal|m42|m51)/],
+  ['Bimetal', /\b(bimetal|bi-metal|bi metal|m42|m51|dekupaj)/],
   ['Carbide', /\b(carbide|karbur|karbit|powercut)/],
   ['Karbon', /\b(karbon|carbon|flexback|woodmaster|slender)/],
   ['Kağıt-Sünger', /\b(sunger|strafor|kagit|dissiz|dalgali)/],
@@ -31,7 +31,7 @@ function numbersIn(t) {
 export function extractDims(raw) {
   const t = fold(raw).replace(/[×*]/g, 'x');
   const d = {};
-  const z = t.match(/(?:\bz\s*(\d{1,3})|(\d{1,3})\s*(?:dis|dişli|disli|diş|z)\b)/);
+  const z = t.match(/(?:\bz\s*-?\s*(\d{1,3})(?![\d/.,])|(?<![\d.,])(\d{1,3})\s*(?:dis|dişli|disli|diş|z)\b)/);
   if (z) d.teeth = parseInt(z[1] || z[2]);
   const tpi = t.match(/(\d{1,2}(?:[.,]\d+)?\s*\/\s*\d{1,2}(?:[.,]\d+)?)\s*(?:tpi)?/);
   if (tpi && !/x/.test(tpi[1])) d.tpi = tpi[1].replace(/\s/g, '').replace(/,/g, '.');
@@ -44,6 +44,10 @@ export function extractDims(raw) {
     const v = m.slice(1).filter(Boolean).map(x => parseFloat(x.replace(',', '.')));
     if (v[0] >= 500) { // şerit: boy x genişlik x kalınlık
       d.length_mm = d.length_mm || v[0]; if (v[1]) d.width = v[1]; if (v[2]) d.thickness = v[2];
+    } else if (v[0] >= 6 && v[0] <= 67 && v[1] && v[1] < 2 && v[2] >= 500) { // genişlik x kalınlık x boy
+      d.width = v[0]; d.thickness = v[1]; d.length_mm = d.length_mm || v[2];
+    } else if (v[0] < 2 && v[1] >= 6 && v[1] <= 67) { // kalınlık x genişlik (x boy)
+      d.thickness = v[0]; d.width = v[1]; if (v[2] >= 500) d.length_mm = d.length_mm || v[2];
     } else if (v[0] >= 60 && v[0] <= 700) { // daire: çap x kalınlık x delik [x diş] veya çap x diş
       d.diameter = v[0];
       if (v.length === 2) { if (v[1] >= 6 && Number.isInteger(v[1]) && v[1] > 10) d.teeth = d.teeth || v[1]; else d.thickness = v[1]; }
@@ -52,6 +56,10 @@ export function extractDims(raw) {
   }
   const lik = t.match(/(\d+(?:[.,]\d+)?)\s*'?\s*(?:lik|lık|luk|lük|lu|li|mm'lik)\b/);
   if (lik) { const v = parseFloat(lik[1].replace(',', '.')); if (v >= 100 && v <= 700 && !d.diameter) d.diameter = v; else if (v >= 6 && v <= 67 && !d.width) d.width = v; }
+  if (d.width && !d.length_mm) { // şeritte ayrı yazılmış boy: "10x0,6 1790"
+    const cand = (t.replace(/\d+(?:[.,]\d+)?\s*\/\s*\d+/g, ' ').match(/(?<![\d.,x])\d{3,4}(?![\d.,]|\s*(?:tl|₺|lira|z\b|dis))/g) || []).map(Number).find(n => n >= 500 && n <= 9999);
+    if (cand) d.length_mm = cand;
+  }
   const gen = t.match(/(\d{1,2})\s*mm\s*(?:genis|en\b)/) || t.match(/(?:genislik|en)\s*:?\s*(\d{1,2})\b/);
   if (gen && !d.width) d.width = parseFloat(gen[1]);
   if (!d.diameter && !d.width) {
@@ -107,6 +115,8 @@ export function matchItem(item, catalog) {
     if (dims.tpi != null && v.tpi) { if (normTpi(v.tpi) === normTpi(dims.tpi)) { s += 15; why.push('TPI'); } else s -= 6; }
     // marka belirtilmemişse öncelik sırası: Kronberg > Onci (iş kuralı), eşitlik bozucu çok küçük puan
     if (!brand) s += ({ Kronberg: 0.3, Onci: 0.2 })[p.mfr] || 0;
+    if ((!brand || brand === 'junior') && !lines.length && p.subcategory === 'Bimetal' && p.mfr === 'Junior') s += /multicut/i.test(p.name) ? 14 : 4; // iş kuralı: markasız bimetal = Junior (Multicut)
+    if (/dekupaj/.test(t) && isBand && v.width > 13) s -= 30; // dekupaj = 13 mm'ye kadar bimetal
     scored.push({ v, s, why });
   }
   scored.sort((a, b) => b.s - a.s);

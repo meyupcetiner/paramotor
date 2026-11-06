@@ -629,12 +629,12 @@ async function api(req, env, url) {
         const warn = [...mt.flags];
         if ((it.uncertain || []).includes('qty') || qty == null) warn.push('Adet mesajda net değil.');
         if ((it.uncertain || []).includes('qty_assumed')) warn.push('Adet yazmıyor, 1 kabul edildi.');
-        if ((it.uncertain || []).includes('price_split')) warn.push('Mesajda tek toplam var; tutar ilk satıra yazıldı, diğerlerini dağıtın.');
+        if ((it.uncertain || []).includes('price_even')) warn.push('Toplam ürünlere eşit bölündü.');
         if (it.second_hand) warn.push('Çıkma (ikinci el) ürün — sıfır gibi kaydedilir, nota yazıldı.');
         if ((it.uncertain || []).includes('price_from_total')) warn.push('Birim fiyat sipariş toplamından hesaplandı.');
         if ((it.uncertain || []).includes('price_kind')) warn.push('Fiyatın birim mi satır toplamı mı olduğu net değil (toplam kabul edildi).');
         if (unit_price == null) warn.push('Fiyat mesajda yok.');
-        for (const u of (it.uncertain || [])) if (!['qty', 'price', 'price_from_total', 'price_kind', 'price_split', 'qty_assumed'].includes(u)) warn.push(`Belirsiz: ${u}`);
+        for (const u of (it.uncertain || [])) if (!['qty', 'price', 'price_from_total', 'price_kind', 'price_split', 'price_even', 'qty_assumed'].includes(u)) warn.push(`Belirsiz: ${u}`);
         return { raw_text: it.raw_text, note: it.note || '', product_id: mt.product_id, variant_id: mt.variant_id, description: v ? `${v.p.name}${v.label && v.label !== 'Standart' ? ' — ' + v.label : ''}` : (it.spec || it.raw_text || ''), is_band: isBand, band_length_mm: isBand ? len : null, qty: qty ?? 1, qty_missing: qty == null, unit_price: unit_price ?? 0, confidence: mt.confidence, score: mt.score, alternatives: mt.alternatives, warnings: warn };
       });
       // mükerrer kontrolü

@@ -103,6 +103,19 @@ async function ensureDB(env) {
     for (const l of ck) { const sp = l.description.replace(/^Çıkma Testere — /, '').replace(/testere/ig, ' ').replace(/\s+/g, ' ').trim(); await run(env, "UPDATE invoice_lines SET description='Çıkma Testere' WHERE id=?", l.id); if (sp) await run(env, "UPDATE invoices SET note = TRIM(? || CASE WHEN COALESCE(note,'')='' THEN '' ELSE ' · ' || note END) WHERE id=?", 'Çıkma: ' + sp, l.invoice_id); }
     await run(env, "INSERT INTO settings (key,value) VALUES ('migr_v5','1') ON CONFLICT(key) DO NOTHING");
   }
+  if (!(await first(env, "SELECT value FROM settings WHERE key='migr_v6'"))) { // v6: eksik ürün aileleri (oluklu, kurt diş)
+    for (const p of expandCatalog().filter(p => ['Kronberg Oluklu', 'Onci Oluklu', 'Onci Kurt Diş'].includes(p.name))) {
+      let row = await first(env, 'SELECT id FROM products WHERE name=?', p.name);
+      if (!row) row = { id: (await run(env, "INSERT INTO products (name,mfr,category,subcategory,unit,description,is_band,created_at) VALUES (?,?,?,?,'Adet',?,0,?)", p.name, p.mfr, p.category, p.subcategory, p.description, nowISO())).meta.last_row_id };
+      const have = await all(env, 'SELECT diameter, teeth FROM variants WHERE product_id=?', row.id);
+      let k = have.length;
+      for (const v of p.variants) if (!have.some(h => Number(h.diameter) === v.diameter && Number(h.teeth) === v.teeth)) await run(env, 'INSERT INTO variants (product_id,label,diameter,thickness,bore,teeth,sort) VALUES (?,?,?,?,?,?,?)', row.id, v.label, v.diameter, v.thickness, v.bore, v.teeth, k++);
+    }
+    const cat = await catalog(env);
+    const un = await all(env, "SELECT id, description FROM invoice_lines WHERE product_id IS NULL AND (description LIKE '%luklu%' OR description LIKE '%LUKLU%' OR description LIKE '%urt%' OR description LIKE '%URT%' OR description LIKE '%olden%' OR description LIKE '%OLDEN%')");
+    for (const l of un) { const mt = matchItem({ raw_text: l.description }, cat); if (mt.confidence !== 'low' && mt.variant_id) await run(env, 'UPDATE invoice_lines SET product_id=?, variant_id=? WHERE id=?', mt.product_id, mt.variant_id, l.id); }
+    await run(env, "INSERT INTO settings (key,value) VALUES ('migr_v6','1') ON CONFLICT(key) DO NOTHING");
+  }
   { const pays = await all(env, 'SELECT name FROM payment_methods'); let k = pays.length; for (const [n, c] of PAYMENTS) if (!pays.some(x => x.name === n)) await run(env, 'INSERT INTO payment_methods (name,color,sort) VALUES (?,?,?)', n, c, k++); }
   await normalizeServices(env);
   READY = true;

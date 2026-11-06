@@ -21,7 +21,7 @@ const SUB_WORDS = [
   ['Ahşap', /\b(ahsap|agac|odun|kereste|tomruk|ahşap|marangoz|sharper|kontrplak|plywood)/]
 ];
 const BRANDS = ['kronberg', 'onci', 'glg', 'krabbe', 'junior', 'schuster', 'flamex', 'testeresan'];
-const LINES = ['freze bileme', 'hss freze', 'drycut bileme', 'dry cut bileme', 'kaynak', 'tamir', 'multicut', 'probeam', 'durocut', 'powercut', 'flexback', 'signier', 'performer', 'steelmaster', 'woodmaster', 'slender', 'sharper', 'bonemaster', 'antifric', 'white', 'tialn', 'tin', 'cermet', 'kuyumcu', 'freze', 'portatif', 'cizici', 'friksiyon', 'vario', 'atlamali', 'dry cut', 'paslanmaz', 'planya', 'gaz beton'];
+const LINES = ['freze bileme', 'hss freze', 'drycut bileme', 'dry cut bileme', 'kaynak', 'tamir', 'multicut', 'probeam', 'durocut', 'powercut', 'flexback', 'signier', 'performer', 'steelmaster', 'woodmaster', 'slender', 'sharper', 'bonemaster', 'antifric', 'white', 'tialn', 'tin', 'cermet', 'kuyumcu', 'freze', 'portatif', 'cizici', 'friksiyon', 'vario', 'atlamali', 'oluklu', 'kurt dis', 'dry cut', 'paslanmaz', 'planya', 'gaz beton'];
 
 function numbersIn(t) {
   return (t.match(/\d+(?:[.,]\d+)?/g) || []).map(x => parseFloat(x.replace(',', '.')));
@@ -76,7 +76,7 @@ function normTpi(s) { return String(s || '').replace(/\s/g, '').replace(/,/g, '.
 // catalog: [{id, product_id, label, diameter, thickness, bore, teeth, width, tpi, length, p: {name, mfr, category, subcategory, is_band}}]
 export function matchItem(item, catalog) {
   const raw = [item.raw_text, item.product_hint, item.brand_hint].filter(Boolean).join(' ');
-  const t = fold(raw).replace(/dry\s*-?\s*cut/g, 'dry cut').replace(/kuru\s*kesim/g, 'dry cut').replace(/martin\s*-?\s*mill?er/g, 'schuster sharper ahsap serit');
+  const t = fold(raw).replace(/dry\s*-?\s*cut/g, 'dry cut').replace(/kuru\s*kesim/g, 'dry cut').replace(/martin\s*-?\s*mill?er/g, 'schuster sharper ahsap serit').replace(/golden\s*-?\s*line/g, 'oluklu').replace(/kurt\s*-?\s*dis/g, 'kurt dis');
   const dims = { ...extractDims(item.raw_text || ''), ...strip(item) };
   if (dims.width && dims.teeth != null && !dims.tpi && !dims.diameter) { dims.tpi = String(dims.teeth); delete dims.teeth; } // şeritte "14z" = 14 TPI
   let kind = item.kind && item.kind !== 'belirsiz' ? item.kind : null;
@@ -107,6 +107,7 @@ export function matchItem(item, catalog) {
     if (brand) { if (fold(p.mfr) === brand) { s += 20; why.push('marka'); } else s -= 25; }
     for (const l of lines) if (pname.includes(l)) { s += 15; why.push(l); }
     for (const w of words) if (pname.includes(w)) s += 4; else if (/^(pro|vario|tin|tialn|white|antifric)$/.test(w)) s -= 0; 
+    if (/kurt dis|oluklu/.test(pname) && !lines.some(l => pname.includes(l))) s -= 12; // özel seriler ancak adı geçince
     if (!words.includes('pro') && /\bpro\b/.test(pname)) s -= 3; if (!words.includes('vario') && /vario/.test(pname)) s -= 3;
     if (dims.diameter != null) { if (eqNum(v.diameter, dims.diameter, 0.5)) { s += 40; why.push('çap'); } else if (v.diameter != null) s -= 45; else s -= 20; }
     if (dims.teeth != null) { if (v.teeth != null && Number(v.teeth) === Number(dims.teeth)) { s += 25; why.push('diş'); } else if (v.teeth != null) s -= 20; }

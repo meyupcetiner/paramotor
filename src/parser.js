@@ -455,6 +455,8 @@ function parseWA(m, idx, sources, payments, reps = []) {
   if (o.payment === 'Belirsiz' && !o.anonymous && !o.store && !/kap[ıi]da/i.test(m.text) && payments.includes('Havale')) o.payment = 'Havale';
   o.promo = !o.exchange && PROMO_RE.test(m.text.replace(/reklam\s*(ajans|ofis)\w*/ig, ''));
   if (o.payment === 'Belirsiz' && !o.anonymous && !o.store) o.uncertain_fields.push('payment');
+  // mağaza siparişi: ödeme yazmıyorsa ya da nakit yazıyorsa Mağaza Nakit
+  if ((o.payment === 'Belirsiz' || o.payment === 'Nakit') && (o.store || o.anonymous || o.source === 'Mağaza') && !o.exchange && payments.includes('Mağaza Nakit')) { o.payment = 'Mağaza Nakit'; o.uncertain_fields = o.uncertain_fields.filter(x => x !== 'payment'); }
   if (o.promo && !(o.order_total > 0) && !o.items.some(it => it.line_total > 0)) { o.payment = 'Belirsiz'; o.uncertain_fields = o.uncertain_fields.filter(x => x !== 'payment'); } // fiyatsız reklam/bedelsiz gönderim: ödeme sorulmaz
   if (!o.items.length) o.uncertain_fields.push('items');
   if (!o.date) o.uncertain_fields.push('date');

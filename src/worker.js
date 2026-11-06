@@ -12,7 +12,7 @@ const BRANDS = [
   { id: 'testere-fabrikasi', name: 'Testere Fabrikası', color: '#1b355b', logo: '/img/testere-fabrikasi.png', invoice_prefix: 'TF', sort: 3 }
 ];
 const SOURCES = [['Instagram', '#e1306c'], ['Facebook', '#1877f2'], ['WhatsApp', '#25d366'], ['Mağaza', '#3b5bdb']];
-const PAYMENTS = [['Havale', '#7c5cff'], ['Kapıda Nakit', '#f59f00'], ['Kapıda Kredi Kartı', '#e8590c'], ['Nakit', '#2f9e44'], ['Kredi Kartı', '#1c7ed6'], ['Kapıda Kontrollü', '#ffcc00']];
+const PAYMENTS = [['Havale', '#7c5cff'], ['Kapıda Nakit', '#f59f00'], ['Kapıda Kredi Kartı', '#e8590c'], ['Nakit', '#2f9e44'], ['Kredi Kartı', '#1c7ed6'], ['Kapıda Kontrollü', '#ffcc00'], ['Mağaza Nakit', '#521438']];
 const REPS = [['M.Cemal', 'M.cemal, Cemal İnce, Cemal', '#5fff00'], ['M.Doğan', 'Doğan, Dogan, DOGAN, dogan, M.doğan, M.dogan', '#3019e5'], ['M.Arslan', 'M.arslan, Mustafa ARSLAN, Mustafa Arslan', '#f08c00']];
 export const DEFAULT_SETTINGS = {
   default_vat: 0,

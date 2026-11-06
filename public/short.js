@@ -15,7 +15,7 @@ export function shortName(p, v = {}, opt = {}) {
     const brand = p.subcategory === 'Karbon' ? '' : mfr;
     // bimetal ve carbide'de seri (Multicut, Durocut, Signier 4HX…) önemli: fiyatı farklı
     if (p.subcategory === 'Bimetal' || p.subcategory === 'Carbide') {
-      const model = noParen(name).replace(new RegExp('^' + mfr + '\\s*', 'i'), '').replace(/\s*(Bimetal|Carbide)\s*Şerit.*$/i, '').trim();
+      const model = noParen(name).replace(new RegExp('^' + mfr + '\\s*', 'i'), '').replace(/\s*(Bimetal|Carbide)\s*Şerit.*$/i, '').replace(/\s+(RX|4HX|GL)$/i, '').trim();
       const sz = opt.length_mm && v.width ? `${Math.round(opt.length_mm)}x${n(v.width)}` : v.width ? `${n(v.width)}x${n(v.thickness)}` : '';
       const tp = opt.withTpi && v.tpi && /\d/.test(v.tpi) ? `${v.tpi} TPI` : '';
       return [mfr, model || t, sz, tp].filter(Boolean).join(' ');

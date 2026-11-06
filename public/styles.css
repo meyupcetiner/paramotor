@@ -1,4 +1,5 @@
 /* PARAMOTOR — tasarım jetonları: Paramotor logosu (#5FFF00 yeşil, #3019E5 mavi, #191919 zemin) + Envato koyu tema dili + Paraşüt düzeni */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 :root {
   --font: "Inter Tight", "Inter", "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
   --font-label: var(--font);
@@ -44,23 +45,20 @@ img { max-width: 100%; }
 /* ---------- Giriş animasyonu ---------- */
 #intro, #intro-ts { position: fixed; inset: 0; display: grid; place-items: center; z-index: 100; transition: opacity .4s ease; }
 #intro-ts { background: #fff; }
-#intro { background: radial-gradient(ellipse at 50% 55%, #1c1f1a 0%, #141414 60%, #101010 100%); overflow: hidden; }
+#intro { background: #141414; overflow: hidden; }
 #intro .pstage { position: relative; width: min(78vw, 620px); aspect-ratio: 1012/258; }
-#intro .ptitle { position: absolute; left: 0; top: 0; width: 79.05%; height: 74.03%; clip-path: polygon(0 0, 0 0, -12% 100%, 0 100%); will-change: clip-path; }
+#intro .ptitle { position: absolute; left: 0; top: 0; width: 79.05%; height: 74.03%; overflow: hidden; }
+#intro .pcover { position: absolute; top: -10%; bottom: -10%; left: -8%; width: 130%; background: #141414; transform: translateX(0) skewX(-14deg); will-change: transform; }
 #intro .ptitle img, #intro .pglider img { display: block; width: 100%; height: 100%; }
-#intro .psheen { position: absolute; inset: 0; overflow: hidden; -webkit-mask: url(/img/pm-title.png) center/100% 100% no-repeat; mask: url(/img/pm-title.png) center/100% 100% no-repeat; }
-#intro .psheen i { position: absolute; top: 0; bottom: 0; left: 0; width: 35%; background: linear-gradient(105deg, transparent, rgba(255,255,255,.55), transparent); transform: translateX(-120%) skewX(-18deg); will-change: transform; }
 #intro .psub { position: absolute; left: 0; top: 74.03%; width: 79.05%; height: 25.97%; opacity: 0; transform: translateY(40%); will-change: transform, opacity; }
 #intro .pglider { position: absolute; left: 79.05%; top: 0; width: 20.95%; height: 100%; opacity: 0; transform: translate(-430%, 70%) rotate(-14deg) scale(.6); transform-origin: 60% 20%; will-change: transform, opacity; }
 #intro.go .pglider { animation: pg-fly 1.25s cubic-bezier(.33, 0, .2, 1) both, pg-bob 1.6s ease-in-out 1.25s infinite; }
-#intro.go .ptitle { animation: pg-wipe 1.05s cubic-bezier(.45, 0, .2, 1) .12s both; }
-#intro.go .psheen i { animation: pg-sheen .8s ease-in-out 1.2s both; }
+#intro.go .pcover { animation: pg-wipe 1.05s cubic-bezier(.45, 0, .2, 1) .12s both; }
 #intro.go .psub { animation: pg-sub .55s cubic-bezier(.2, .7, .2, 1) 1.0s both; }
 #intro.go .pstage { animation: pg-out .45s cubic-bezier(.5, 0, .75, 0) 2.05s both; }
 @keyframes pg-fly { 0% { opacity: 0; transform: translate(-430%, 70%) rotate(-14deg) scale(.6); } 15% { opacity: 1; } 55% { transform: translate(-150%, -18%) rotate(8deg) scale(.9); } 100% { opacity: 1; transform: translate(0, 0) rotate(0) scale(1); } }
 @keyframes pg-bob { 0%, 100% { opacity: 1; transform: translate(0, 0) rotate(0); } 50% { opacity: 1; transform: translate(0, -4%) rotate(-2.5deg); } }
-@keyframes pg-wipe { to { clip-path: polygon(0 0, 115% 0, 103% 100%, 0 100%); } }
-@keyframes pg-sheen { from { transform: translateX(-120%) skewX(-18deg); } to { transform: translateX(320%) skewX(-18deg); } }
+@keyframes pg-wipe { from { transform: translateX(0) skewX(-14deg); } to { transform: translateX(105%) skewX(-14deg); } }
 @keyframes pg-out { to { transform: scale(1.05); opacity: 0; } }
 @keyframes pg-sub { to { opacity: 1; transform: translateY(0); } }
 #intro-ts .stage { position: relative; width: min(72vw, 540px); aspect-ratio: 700/438; }
@@ -79,7 +77,7 @@ img { max-width: 100%; }
 @keyframes pm-shine { from { background-position: 160% 0; } to { background-position: -60% 0; } }
 @keyframes pm-out { to { transform: scale(1.06); opacity: 0; filter: blur(2px); } }
 #intro .skip { position: absolute; right: 22px; bottom: 22px; border: 1px solid #333; background: transparent; color: #aaa; border-radius: var(--radius-pill); padding: 7px 16px; cursor: pointer; font-size: 13px; }
-@media (prefers-reduced-motion: reduce) { #intro-ts .blade, #intro-ts .badge, #intro-ts .shine, #intro-ts .stage, #intro .pglider, #intro .ptitle, #intro .psub, #intro .psheen, #intro .pstage { animation-duration: .01s !important; animation-delay: 0s !important; animation-iteration-count: 1 !important; } }
+@media (prefers-reduced-motion: reduce) { #intro-ts .blade, #intro-ts .badge, #intro-ts .shine, #intro-ts .stage, #intro .pglider, #intro .ptitle, #intro .psub, #intro .pcover, #intro .pstage { animation-duration: .01s !important; animation-delay: 0s !important; animation-iteration-count: 1 !important; } }
 
 /* ---------- Giriş / şifre ---------- */
 .auth { min-height: 100vh; display: grid; place-items: center; padding: 24px; background: radial-gradient(1200px 500px at 50% -10%, rgba(48, 25, 229, .16), transparent 60%), var(--bg); }
@@ -512,9 +510,35 @@ td .avatar::after { display: none; }
   .toolbar > .btn { flex: 1; justify-content: center; }
   .searchbar .fbtn { padding: 0 12px; font-size: 12px; }
   .footbar { position: static; background: none; }
-  .bcard .plate { height: 110px !important; padding: 10px; overflow: hidden; }
-  .bcard .plate img, .bcard.main .plate img { max-height: 88px !important; height: auto !important; width: auto; }
-  .bcard .meta b { font-size: 15px; }
-  .select-wrap { gap: 12px; }
+  /* marka seçimi: kompakt satırlar */
+  .select-page { padding: 14px 12px 24px !important; }
+  .select-page .top { padding: 4px 2px 0 !important; margin-bottom: 14px !important; }
+  .select-page .top img { height: 30px !important; }
+  .select-wrap, .brand-row { gap: 8px !important; }
+  .bcard, .bcard.main { flex-direction: row !important; align-items: center; border-radius: 14px; max-width: none; }
+  .bcard .plate, .bcard.main .plate { width: 64px; height: 52px !important; flex: none; padding: 6px !important; border-radius: 10px; margin: 8px 0 8px 8px; }
+  .bcard .plate img, .bcard.main .plate img { max-height: 40px !important; max-width: 100% !important; }
+  .bcard .meta { flex: 1; padding: 8px 12px !important; align-items: center !important; min-width: 0; }
+  .bcard .meta b { font-size: 14px !important; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bcard .meta > div:first-child { flex: 1; min-width: 0; }
+  .bcard .meta .k { flex: none; }
+  .bcard .meta .muted.small { font-size: 11px; }
+  .bcard .meta .k div:first-child { font-size: 14px !important; white-space: nowrap; }
+  .bcard .meta .k .small { font-size: 10.5px; white-space: nowrap; }
+  /* iOS odak yakınlaştırmasını engelle (16px altı yazı alanında sayfa büyüyordu) */
+  input, select, textarea, .in, .in.sm { font-size: 16px !important; }
+  /* satış kartları daha sade */
+  .tbl.list tr { padding: 9px 10px; }
+  .tbl.list .t-title { font-size: 14px; }
+  .tbl.list .t-il { font-size: 11.5px; }
+  .tbl.list .tags { gap: 4px; margin-top: 3px; }
+  .tbl.list .pill { height: 18px; padding: 0 6px; font-size: 9.5px; gap: 3px; }
+  .tbl.list .pill svg { width: 11px; height: 11px; }
+  .tbl.list .tag-off { font-size: 9px; padding: 1px 5px; }
+  .tbl.list td:nth-child(2) { font-size: 12px !important; }
+  .tbl.list td:nth-child(4) { font-size: 14px !important; }
+  .searchbar input { height: 40px; }
+  .searchbar .fbtn { height: 40px; }
+  .toolbar > .btn { height: 40px; font-size: 13.5px; }
   .select-page .top img { height: 34px; }
 }

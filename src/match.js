@@ -133,7 +133,7 @@ export function matchItem(item, catalog) {
   if (kind === 'hizmet' && best && best.v.p.category === 'Hizmetler') { /* hizmet: tek başlık, uyarı yok */ }
   else if (second && best.s - second.s < 8 && !(!brand && best.v.p.subcategory === 'Karbon' && sameSpec(best, second))) flags.push(brand ? 'Birden fazla varyant benzer; doğru olanı kontrol edin.' : 'Marka/varyant net değil; önerilen ürünü kontrol edin.');
   if (kind === 'serit' && !dims.length_mm && best && best.v.p.is_band) flags.push('Şerit boyu (mm) mesajda bulunamadı.');
-  if (best && dims.teeth != null && best.v.teeth != null && Number(best.v.teeth) !== Number(dims.teeth)) flags.push('Bu diş sayısı katalogda yok, en yakını önerildi.');
+  if (best && !best.v.p.is_band && dims.teeth != null && best.v.teeth != null && Number(best.v.teeth) !== Number(dims.teeth)) flags.push('Bu diş sayısı katalogda yok, en yakını önerildi.');
   const confident = !!best && best.s >= 35 && flags.length === 0;
   return {
     variant_id: best && best.s >= 0 ? best.v.id : null,

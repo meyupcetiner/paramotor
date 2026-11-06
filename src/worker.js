@@ -82,7 +82,7 @@ async function ensureDB(env) {
   }
   if (!(await first(env, "SELECT value FROM settings WHERE key='migr_v5'"))) {
     // resmi satış = fiyatlar KDV dahil, sabit %20: KDV'si ayrılmamış resmi satışlarda tutar aynı kalır, KDV içinden ayrılır
-    const offs = await all(env, 'SELECT id FROM invoices WHERE is_official=1 AND IFNULL(vat_total,0)=0');
+    const offs = await all(env, "SELECT id FROM invoices WHERE is_official=1 AND IFNULL(vat_total,0)=0 AND IFNULL(auto_batch_id,0) NOT IN (SELECT id FROM auto_batches WHERE engine='import')"); // Paraşüt'ten gelenlere dokunulmaz
     for (let i = 0; i < offs.length; i += 50) {
       const ids = offs.slice(i, i + 50).map(x => x.id); const ph = ids.map(() => '?').join(',');
       await env.DB.batch([

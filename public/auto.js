@@ -100,7 +100,7 @@ function drawResult(ctx) {
   const payOpts = S.boot.payments.filter(s => s.active).map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('');
   box.innerHTML = `<div class="card"><div class="bd" style="padding:16px 18px"><div class="row wrap" style="gap:12px">
       <div><b style="font-size:17px">${orders.length} sipariş</b> <span class="muted">· ${[...new Set(orders.map(o => dmy(o.date || R.date)))].filter(Boolean).join(', ')}</span>
-        <div class="small muted" style="margin-top:2px">${nCheck ? `<span style="color:var(--warn)">${nCheck} siparişte eksik/kontrol</span> · ` : ''}değişim, mükerrer olanlar atlandı olarak gelir</div></div>
+        <div class="small muted" style="margin-top:2px">${nCheck ? `<span style="color:var(--blue-text);font-weight:600">${nCheck} siparişte kontrol gerekiyor</span> · ` : ''}değişim, mükerrer olanlar atlandı olarak gelir</div></div>
       <span class="sp"></span>
       <select class="in sm" id="bulkpay" style="width:auto"><option value="">Ödemesi boş olanlara…</option>${payOpts}</select>
       <button class="btn" id="all">${icon('check')} Hepsini onayla</button><button class="btn pri" id="commit">Kaydet (<span id="nok">0</span>)</button></div></div></div>

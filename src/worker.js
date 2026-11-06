@@ -117,6 +117,16 @@ async function ensureDB(env) {
     for (const l of un) { const mt = matchItem({ raw_text: l.description }, cat); const ok = mt.confidence === 'ok' && mt.variant_id; await run(env, 'UPDATE invoice_lines SET product_id=?, variant_id=? WHERE id=?', ok ? mt.product_id : null, ok ? mt.variant_id : null, l.id); }
     await run(env, "INSERT INTO settings (key,value) VALUES ('migr_v6','1'),('migr_v7','1') ON CONFLICT(key) DO NOTHING");
   }
+  if (!(await first(env, "SELECT id FROM products WHERE name='Bor Yağı'"))) { // v8: bor yağı
+    const r = await run(env, "INSERT INTO products (name,mfr,category,subcategory,unit,description,is_band,created_at) VALUES ('Bor Yağı','Testeresan','Diğer Ürünler','Diğer','Adet','Kesme / soğutma yağı (bor yağı).',0,?)", nowISO());
+    await run(env, "INSERT INTO variants (product_id,label,sort) VALUES (?,'Standart',0)", r.meta.last_row_id);
+  }
+  if (!(await first(env, "SELECT value FROM settings WHERE key='migr_v9'"))) { // v9: bimetal/carbide kısa adına seri (Multicut, Durocut…)
+    const ls = await all(env, "SELECT l.id, l.description, p.name, p.mfr, p.category, p.subcategory, p.is_band, v.width, v.thickness, v.tpi FROM invoice_lines l JOIN products p ON p.id=l.product_id LEFT JOIN variants v ON v.id=l.variant_id WHERE p.subcategory IN ('Bimetal','Carbide') AND (l.description LIKE p.mfr || ' Bimetal Şerit%' OR l.description LIKE p.mfr || ' Carbide Şerit%')");
+    const ups = ls.map(l => { const m = l.description.match(/(\S+)\s*TPI$/); return env.DB.prepare('UPDATE invoice_lines SET description=? WHERE id=?').bind(shortName(l, { ...l, tpi: m ? m[1] : l.tpi }, { withTpi: true }), l.id); });
+    for (let i = 0; i < ups.length; i += 100) await env.DB.batch(ups.slice(i, i + 100));
+    await run(env, "INSERT INTO settings (key,value) VALUES ('migr_v9','1') ON CONFLICT(key) DO NOTHING");
+  }
   { const pays = await all(env, 'SELECT name FROM payment_methods'); let k = pays.length; for (const [n, c] of PAYMENTS) if (!pays.some(x => x.name === n)) await run(env, 'INSERT INTO payment_methods (name,color,sort) VALUES (?,?,?)', n, c, k++); }
   await normalizeServices(env);
   READY = true;
@@ -718,7 +728,7 @@ async function api(req, env, url) {
         if ((it.uncertain || []).includes('price_kind')) warn.push('Fiyatın birim mi satır toplamı mı olduğu net değil (toplam kabul edildi).');
         if (unit_price == null) warn.push('Fiyat mesajda yok.');
         for (const u of (it.uncertain || [])) if (!['qty', 'price', 'price_from_total', 'price_kind', 'price_split', 'price_even', 'qty_assumed'].includes(u)) warn.push(`Belirsiz: ${u}`);
-        return { raw_text: it.raw_text, note: it.note || '', product_id: mt.product_id, variant_id: mt.variant_id, description: v ? (it.second_hand ? 'Çıkma Testere' : shortName(v.p, v, { withTpi: true })) : (it.spec || it.raw_text || ''), is_band: isBand, band_length_mm: isBand ? len : null, qty: qty ?? 1, qty_missing: qty == null, unit_price: unit_price ?? 0, confidence: mt.confidence, score: mt.score, alternatives: mt.alternatives, warnings: warn };
+        return { raw_text: it.raw_text, note: it.note || '', product_id: mt.product_id, variant_id: mt.variant_id, description: v ? (it.second_hand ? 'Çıkma Testere' : shortName(v.p, mt.tpi_override ? { ...v, tpi: mt.tpi_override } : v, { withTpi: true })) : (it.spec || it.raw_text || ''), is_band: isBand, band_length_mm: isBand ? len : null, qty: qty ?? 1, qty_missing: qty == null, unit_price: unit_price ?? 0, confidence: mt.confidence, score: mt.score, alternatives: mt.alternatives, warnings: warn };
       });
       // mükerrer kontrolü
       let duplicate = null;

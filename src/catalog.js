@@ -77,6 +77,7 @@ export const FAMILIES = [
   // ---------------- Testeresan imalat ----------------
   { name: 'Testeresan Endüstriyel Bıçak (Özel İmalat)', mfr: 'Testeresan', cat: O, sub: 'Endüstriyel Bıçak', t: 'single', desc: 'CNC ile özel ölçü imalat bıçaklar. Ölçü satırda açıklamaya yazılır.', rows: [[]] },
   // hizmetler (WhatsApp geçmişindeki satışlardan)
+  { name: 'Bor Yağı', mfr: 'Testeresan', cat: O, sub: 'Diğer', t: 'single', desc: 'Kesme / soğutma yağı (bor yağı).', rows: [[]] },
   { name: 'Çıkma Testere', mfr: 'Testeresan', cat: O, sub: 'Çıkma', t: 'single', desc: 'İkinci el (çıkma) testere. Ölçü/tür satır açıklamasına yazılır.', rows: [[]] },
   { name: 'Bileme Hizmeti', mfr: 'Testeresan', cat: 'Hizmetler', sub: 'Bileme', t: 'single', desc: 'Freze, daire, Dry Cut / TCT bileme, diş açma, tamir.', rows: [[]] },
   { name: 'Kaynak Hizmeti', mfr: 'Testeresan', cat: 'Hizmetler', sub: 'Kaynak', t: 'single', desc: 'Şerit kesim ve kaynak, kopan şerit kaynağı.', rows: [[]] }

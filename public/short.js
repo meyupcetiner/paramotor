@@ -13,8 +13,15 @@ export function shortName(p, v = {}, opt = {}) {
   if (p.is_band) {
     const t = BAND_T[p.subcategory] || 'Şerit';
     const brand = p.subcategory === 'Karbon' ? '' : mfr;
+    // bimetal ve carbide'de seri (Multicut, Durocut, Signier 4HX…) önemli: fiyatı farklı
+    if (p.subcategory === 'Bimetal' || p.subcategory === 'Carbide') {
+      const model = noParen(name).replace(new RegExp('^' + mfr + '\\s*', 'i'), '').replace(/\s*(Bimetal|Carbide)\s*Şerit.*$/i, '').trim();
+      const sz = opt.length_mm && v.width ? `${Math.round(opt.length_mm)}x${n(v.width)}` : v.width ? `${n(v.width)}x${n(v.thickness)}` : '';
+      const tp = opt.withTpi && v.tpi && /\d/.test(v.tpi) ? `${v.tpi} TPI` : '';
+      return [mfr, model || t, sz, tp].filter(Boolean).join(' ');
+    }
     const size = opt.length_mm && v.width ? `${Math.round(opt.length_mm)}x${n(v.width)}` : v.width ? `${n(v.width)}x${n(v.thickness)}` : '';
-    const tpi = opt.withTpi && v.tpi && /\d/.test(v.tpi) ? `${v.tpi} TPI` : '';
+    const tpi = opt.withTpi && p.subcategory === 'Karbon' && v.tpi && /\d/.test(v.tpi) ? `${v.tpi} TPI` : '';
     return [brand, t, size, tpi].filter(Boolean).join(' ');
   }
   if (/dry\s*cut/i.test(name)) return [mfr, /paslanmaz/i.test(name) ? 'Paslanmaz Drycut' : 'Drycut', v.diameter ? `${n(v.diameter)}x${v.teeth || ''}`.replace(/x$/, '') : ''].filter(Boolean).join(' ');

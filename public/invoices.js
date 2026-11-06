@@ -12,7 +12,7 @@ const CIRC_T = { Ahşap: 'Ahşap', 'MDF-Suntalam': 'MDF', 'Alüminyum-PVC': 'Al�
 export function shortLabel(l) {
   if (!l.pname) { const d = String(l.description || '').replace(/\s+/g, ' ').trim(); return d.length > 42 ? d.slice(0, 40) + '…' : d; }
   const n = l.pname;
-  if (l.is_band) { const t = BAND_T[l.subcategory] || 'Şerit'; const size = l.band_length_mm && l.vwidth ? `${Math.round(l.band_length_mm)}x${nf(l.vwidth)}` : l.vwidth ? `${nf(l.vwidth)}x${nf(l.vthick)}` : ''; return [l.mfr, t, size].filter(Boolean).join(' '); }
+  if (l.is_band) { const t = BAND_T[l.subcategory] || 'Şerit'; const size = l.band_length_mm && l.vwidth ? `${Math.round(l.band_length_mm)}x${nf(l.vwidth)}` : l.vwidth ? `${nf(l.vwidth)}x${nf(l.vthick)}` : ''; return [l.subcategory === 'Karbon' ? '' : l.mfr, t, size].filter(Boolean).join(' '); }
   if (/dry\s*cut/i.test(n)) return `${/paslanmaz/i.test(n) ? 'Paslanmaz ' : ''}DryCut${l.vdia ? ` ${nf(l.vdia)}x${l.vteeth || ''}` : ''}`.replace(/x$/, '');
   if (l.vdia && l.vteeth) { const t = /ağaç/i.test(n) ? 'Ağaç' : /çizici/i.test(n) ? 'Çizici' : /freze/i.test(n) ? 'Freze' : /portatif/i.test(n) ? 'Portatif' : (CIRC_T[l.subcategory] || ''); return [l.mfr, t, `${nf(l.vdia)}x${l.vteeth}`].filter(Boolean).join(' '); }
   if (l.vdia) return `${n.replace(/\s*\(.*?\)/g, '')} ${nf(l.vdia)}${l.vthick ? 'x' + nf(l.vthick) : ''}`;

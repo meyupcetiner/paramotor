@@ -1,7 +1,7 @@
 // Kural tabanlı metin ayrıştırıcı (API anahtarı gerektirmez). Sadece yapıştırılan METİN için.
 // Çıktı biçimi Claude ayrıştırıcısıyla aynıdır. Emin olunmayan alanlar boş bırakılır ve işaretlenir.
 import '../public/il-ilce.js';
-import { trLower, fold } from './match.js';
+import { trLower, fold, extractDims } from './match.js';
 
 const IL = globalThis.IL_ILCE;
 const IL_FOLD = Object.keys(IL).map(il => ({ il, f: fold(il), ilceler: IL[il].map(x => ({ x, f: fold(x) })) }));
@@ -309,6 +309,7 @@ function parseWA(m, idx, sources, payments, reps = []) {
     let mm;
     if (!l) return;
     if ((mm = l.match(PDF_RE)) && /\.pdf/i.test(l)) { pdfName = mm[1].trim(); return; }
+    if (/^ma[gğ]aza\s*(sat[ıi][şs][ıi]?|m[üu][şs]terisi|teslim)?\s*$/i.test(l)) { o.store = true; return; }
     // durum / başlık satırı (genelde ilk satır, bazen *PEŞİN ÖDEME* sonda)
     const upper = (() => { const L = l.replace(/\([^)]*\)/g, '').replace(/[^\p{L}]/gu, ''); return L.length >= 4 && L.replace(/[^\p{Lu}]/gu, '').length / L.length > 0.6; })();
     if (/^\*.*\*$/.test(raw) || (i === 0 && upper && STATUS_RE.test(l) && !/\d{3,}/.test(l))) {
@@ -316,14 +317,14 @@ function parseWA(m, idx, sources, payments, reps = []) {
         const p = payFrom(l, payments); if (p !== 'Belirsiz') o.payment = p;
         if (/kap[ıi]da/i.test(l) && p === 'Belirsiz') notes.push('Kapıda ödeme yazıyor; nakit/kart belirtilmemiş.');
         if (/resm[iİ]/i.test(l) && !/gayr/i.test(l)) o.is_official = true;
-        if (/fatura bilgi/i.test(l)) return;
+        if (/fatura bilgi/i.test(l)) { rest.push('FATURA BİLGİLERİ'); return; }
         const low = l.toLocaleLowerCase('tr');
         const del = low.split(/\s+/).filter(w => !/^(gayr[iı]resm[iı]|kap[ıi]da|nakit|k\.?kart[ıi]?|kredi|kart[ıi]?|[öo]deme|resm[iı]|sat[ıi][şs][ıi]?|pe[şs]in)$/.test(w)).join(' ').trim();
         if (del) o.delivery = cap(del);
         if (/^ma[gğ]aza\b/.test(low) || /ma[gğ]aza(dan)?\s*(teslim|m[uü][şs]teri|ald[ıi])|karak[öo]y/.test(low)) o.store = true;
         return;
       }
-      if (/fatura bilgi/i.test(l)) return;
+      if (/fatura bilgi/i.test(l)) { rest.push('FATURA BİLGİLERİ'); return; }
       notes.push(l); return; // "*100 DİŞ olucak*", "*Acelesi yok*"
     }
     // temsilci + toplam aynı satırda: "(M.cemal) 2890₺" / "19.000₺ (M.cemal)"
@@ -367,7 +368,7 @@ function parseWA(m, idx, sources, payments, reps = []) {
       const extra = notesIn.filter(x => !/çıkma|cikma/i.test(x));
       if (extra.some(x => EXCH_RE.test(x))) o.exchange = true;
       if (extra.length) it.note = extra.join(', ');
-      if (/bileme|kaynak|tamir|torna/i.test(body)) it.service = true;
+      if (/bileme|bilet|kaynak|kaynat|kopan|tamir|torna|di[şs]\s*a[çc]/i.test(body) && !/kaynakl[ıi]/i.test(body)) it.service = true;
       it.spec = body;
       o.items.push(it); lastItem = it; return;
     }
@@ -378,9 +379,9 @@ function parseWA(m, idx, sources, payments, reps = []) {
       if (EXCH_RE.test(mm[1])) o.exchange = true;
       notes.push(mm[1]); return;
     }
-    if (!seenTotal && /(bileme|kaynak\b|tamir|makine(si)?\b|testere\s*makine)/i.test(l) && !(ADDRESS_WORDS.test(l) && !/bileme|kaynak|tamir/i.test(l)) && !PHONE_RE.test(l) && (PHONE_RE.lastIndex = 0, true)) {
+    if (!seenTotal && /(bileme|bilet|kaynak\b|kaynat|kopan|tamir|di[şs]\s*a[çc]|makine(si)?\b|testere\s*makine)/i.test(l) && !(ADDRESS_WORDS.test(l) && !/bileme|kaynak|tamir|kopan|di[şs]\s*a[çc]/i.test(l)) && !PHONE_RE.test(l) && (PHONE_RE.lastIndex = 0, true)) {
       const pt = priceTail(l); const spec = pt ? l.slice(0, pt.idx).trim() : l;
-      const it = { raw_text: l, qty: 1, unit_price: null, line_total: pt ? pt.v : null, uncertain: ['qty'], spec, service: /bileme|kaynak|tamir/i.test(l), kind: /makine/i.test(l) ? 'diger' : undefined };
+      const it = { raw_text: l, qty: 1, unit_price: null, line_total: pt ? pt.v : null, uncertain: ['qty'], spec, service: /bileme|bilet|kaynak|kaynat|kopan|tamir|di[şs]\s*a[çc]/i.test(l), kind: /makine/i.test(l) ? 'diger' : undefined };
       o.items.push(it); lastItem = it; return;
     }
     if (o.items.length && !seenTotal && !PHONE_RE.test(l)) { PHONE_RE.lastIndex = 0; notes.push(l); return; } // ürünlerin arasındaki serbest not
@@ -463,7 +464,7 @@ function parseWA(m, idx, sources, payments, reps = []) {
     else if (missing.length > 1 && !priced.length) { // fiyatsız çok ürün: toplam adet başına eşit bölünür (dişi farklı aynı ürün aynı fiyat)
       const units = missing.reduce((a, it) => a + (Number(it.qty) || 1), 0);
       const per = Math.round(o.order_total / units * 100) / 100;
-      const key = it => fold(it.spec || it.raw_text || '').replace(/,/g, '.').replace(/tpi/g, ' tpi').replace(/\d+(?:[.,]\d+)?\s*\/\s*\d+(?:[.,]\d+)?|\d+\s*tpi|\bz\s*\d+|\d+\s*(?:z|dis)\b/g, '').replace(/\btpi\b/g, '').replace(/[^a-z0-9.]+/g, ' ').trim();
+      const key = it => { const t = it.spec || it.raw_text || ''; const d = extractDims(t); const w = fold(t).replace(/[^a-z ]+/g, ' ').split(/\s+/).filter(x => x.length > 2 && !['tpi', 'adet', 'dis', 'mm'].includes(x)).sort().join(' '); return [d.width, d.thickness, d.length_mm, d.diameter, d.bore, it.service ? 's' : '', w].join('|'); };
       const same = new Set(missing.map(key)).size === 1;
       let acc = 0;
       missing.forEach((it, k) => { const q = Number(it.qty) || 1; it.line_total = k === missing.length - 1 ? Math.round((o.order_total - acc) * 100) / 100 : Math.round(per * q * 100) / 100; acc += it.line_total; if (!same) it.uncertain.push('price_even'); });

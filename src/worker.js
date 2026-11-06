@@ -59,7 +59,36 @@ async function ensureDB(env) {
   }
   const b = await first(env, 'SELECT COUNT(*) c FROM brands');
   if (!b || !b.c) await seed(env);
+  // v3 göçü: hizmetler iki başlıkta toplanır (Bileme Hizmeti, Kaynak Hizmeti)
+  if (!(await first(env, "SELECT value FROM settings WHERE key='migr_v3'"))) {
+    const svc = await all(env, "SELECT id,name,subcategory FROM products WHERE category='Hizmetler' ORDER BY id");
+    const ensure = async (name, sub, desc, pref) => {
+      let p = svc.find(x => x.name === name) || svc.find(x => pref.includes(x.name));
+      if (p) await run(env, "UPDATE products SET name=?, subcategory=?, description=?, active=1 WHERE id=?", name, sub, desc, p.id);
+      else { const r = await run(env, "INSERT INTO products (name,mfr,category,subcategory,unit,description,is_band,created_at) VALUES (?,'Testeresan','Hizmetler',?,'Adet',?,0,?)", name, sub, desc, nowISO()); p = { id: r.meta.last_row_id }; await run(env, "INSERT INTO variants (product_id,label,sort) VALUES (?,'Standart',0)", p.id); }
+      return p.id;
+    };
+    const bil = await ensure('Bileme Hizmeti', 'Bileme', 'Freze, daire, Dry Cut / TCT bileme, diş açma, tamir.', ['HSS Freze Bileme', 'Dry Cut / TCT Testere Bileme']);
+    const kay = await ensure('Kaynak Hizmeti', 'Kaynak', 'Şerit kesim ve kaynak, kopan şerit kaynağı.', ['Şerit Kaynak']);
+    for (const x of svc) if (x.id !== bil && x.id !== kay) await run(env, 'UPDATE products SET active=0 WHERE id=?', x.id);
+    await run(env, "INSERT INTO settings (key,value) VALUES ('migr_v3','1') ON CONFLICT(key) DO NOTHING");
+  }
+  await normalizeServices(env);
   READY = true;
+}
+
+// Hizmet satırlarını iki başlığa toplar: kaynak içerenler Kaynak Hizmeti, diğer bileme/diş açma/tamir Bileme Hizmeti (eski ve yeni kayıtlar)
+async function normalizeServices(env) {
+  const bil = await first(env, "SELECT p.id, (SELECT v.id FROM variants v WHERE v.product_id=p.id ORDER BY v.id LIMIT 1) vid FROM products p WHERE name='Bileme Hizmeti' AND category='Hizmetler'");
+  const kay = await first(env, "SELECT p.id, (SELECT v.id FROM variants v WHERE v.product_id=p.id ORDER BY v.id LIMIT 1) vid FROM products p WHERE name='Kaynak Hizmeti' AND category='Hizmetler'");
+  if (!bil || !kay) return;
+  const like = ws => ws.flatMap(w => [w, w.replace(/i/g, 'İ').toUpperCase(), w[0].toUpperCase() + w.slice(1)]).map(w => `description LIKE '%${w.replace(/'/g, "''")}%'`).join(' OR ');
+  const K = like(['kaynak', 'kaynat']), B = like(['bileme', 'bilet', 'diş aç', 'dis ac', 'tamir', 'torna']);
+  const others = `SELECT id FROM products WHERE category='Hizmetler' AND id NOT IN (${bil.id},${kay.id})`;
+  await env.DB.batch([
+    env.DB.prepare(`UPDATE invoice_lines SET product_id=?, variant_id=? WHERE (product_id IS NULL OR product_id IN (${others}) OR product_id=?) AND (${K})`).bind(kay.id, kay.vid, bil.id),
+    env.DB.prepare(`UPDATE invoice_lines SET product_id=?, variant_id=? WHERE (product_id IS NULL AND (${B})) OR product_id IN (${others})`).bind(bil.id, bil.vid)
+  ]);
 }
 
 async function seed(env) {
@@ -766,6 +795,7 @@ async function api(req, env, url) {
         .bind(id, l.sort, l.product_id || null, l.variant_id || null, l.description || '', l.qty, l.unit || 'Adet', r2(l.line_net / l.qty), l.band_meters || null, l.line_net)));
       added++;
     }
+    await normalizeServices(env);
     return json({ ok: true, batch_id: batch, added, skipped });
   }
   if (p.startsWith('/import/') && m === 'DELETE') {

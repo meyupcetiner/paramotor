@@ -76,11 +76,12 @@ function normTpi(s) { return String(s || '').replace(/\s/g, '').replace(/,/g, '.
 // catalog: [{id, product_id, label, diameter, thickness, bore, teeth, width, tpi, length, p: {name, mfr, category, subcategory, is_band}}]
 export function matchItem(item, catalog) {
   const raw = [item.raw_text, item.product_hint, item.brand_hint].filter(Boolean).join(' ');
-  const t = fold(raw).replace(/dry\s*-?\s*cut/g, 'dry cut').replace(/kuru\s*kesim/g, 'dry cut');
+  const t = fold(raw).replace(/dry\s*-?\s*cut/g, 'dry cut').replace(/kuru\s*kesim/g, 'dry cut').replace(/martin\s*-?\s*mill?er/g, 'schuster');
   const dims = { ...extractDims(item.raw_text || ''), ...strip(item) };
   if (dims.width && dims.teeth != null && !dims.tpi && !dims.diameter) { dims.tpi = String(dims.teeth); delete dims.teeth; } // şeritte "14z" = 14 TPI
   let kind = item.kind && item.kind !== 'belirsiz' ? item.kind : null;
-  if (item.service) kind = 'hizmet';
+  if (item.service || (/bileme|bilet|dis ac|kopan|tamir|torna/.test(t) || (/kaynak|kaynat/.test(t) && !/kaynakli/.test(t))) && !/makine/.test(t)) kind = 'hizmet';
+  const svcKaynak = /kaynak|kaynat|kopan/.test(t);
   if (!kind) kind = (/serit|şerit/.test(t) || dims.width || dims.length_mm) ? 'serit' : (dims.diameter ? 'daire' : null);
   const subs = SUB_WORDS.filter(([, re]) => re.test(t)).map(([s]) => s);
   const brand = BRANDS.find(b => t.includes(b)) || (item.brand_hint ? BRANDS.find(b => fold(item.brand_hint).includes(b)) : null);
@@ -95,7 +96,7 @@ export function matchItem(item, catalog) {
     if (kind === 'serit' && !isBand) s -= 60;
     if (kind === 'daire' && isBand) s -= 60;
     if (kind === 'diger' && p.category !== 'Diğer Ürünler') s -= 30;
-    if (kind === 'hizmet') { if (p.category !== 'Hizmetler') s -= 200; else s += 30; }
+    if (kind === 'hizmet') { if (p.category !== 'Hizmetler') s -= 200; else s += 40 + ((p.subcategory === 'Kaynak') === svcKaynak ? 30 : -30); }
     else if (p.category === 'Hizmetler') s -= 80;
     const pname = fold(p.name + ' ' + p.subcategory + ' ' + p.mfr);
     if (subs.length) {
@@ -115,7 +116,8 @@ export function matchItem(item, catalog) {
     if (dims.tpi != null && v.tpi) { if (normTpi(v.tpi) === normTpi(dims.tpi)) { s += 15; why.push('TPI'); } else s -= 6; }
     // marka belirtilmemişse öncelik sırası: Kronberg > Onci (iş kuralı), eşitlik bozucu çok küçük puan
     if (!brand) s += ({ Kronberg: 0.3, Onci: 0.2 })[p.mfr] || 0;
-    if ((!brand || brand === 'junior') && !lines.length && p.subcategory === 'Bimetal' && p.mfr === 'Junior') s += /multicut/i.test(p.name) ? 14 : 4; // iş kuralı: markasız bimetal = Junior (Multicut)
+    if ((!brand || brand === 'junior') && !lines.length && p.subcategory === 'Bimetal' && p.mfr === 'Junior') s += /multicut/i.test(p.name) ? 14 : 4;
+    if (brand === 'schuster' && !lines.length && p.subcategory === 'Bimetal' && /signier/i.test(p.name)) s += 14; // Schuster/Martin Miller bimetal varsayılan: Signier 4HX // iş kuralı: markasız bimetal = Junior (Multicut)
     if (/dekupaj/.test(t) && isBand && v.width > 13) s -= 30; // dekupaj = 13 mm'ye kadar bimetal
     scored.push({ v, s, why });
   }
@@ -124,7 +126,9 @@ export function matchItem(item, catalog) {
   const flags = [];
   if (freud) flags.push('Mesajda Freud geçiyor; Freud katalogda yok, en yakın ürün önerildi.');
   if (!best || best.s < 35) flags.push('Ürün katalogla güvenle eşleşmedi, lütfen seçin.');
-  else if (second && best.s - second.s < 8) flags.push(brand ? 'Birden fazla varyant benzer; doğru olanı kontrol edin.' : 'Marka/varyant net değil; önerilen ürünü kontrol edin.');
+  const sameSpec = (a, b) => a && b && a.v.p.subcategory === b.v.p.subcategory && a.v.p.is_band === b.v.p.is_band && eqNum(a.v.width ?? -1, b.v.width ?? -1) && eqNum(a.v.thickness ?? -1, b.v.thickness ?? -1) && normTpi(a.v.tpi) === normTpi(b.v.tpi) && eqNum(a.v.diameter ?? -1, b.v.diameter ?? -1) && (a.v.teeth ?? -1) === (b.v.teeth ?? -1);
+  if (kind === 'hizmet' && best && best.v.p.category === 'Hizmetler') { /* hizmet: tek başlık, uyarı yok */ }
+  else if (second && best.s - second.s < 8 && !(!brand && best.v.p.subcategory === 'Karbon' && sameSpec(best, second))) flags.push(brand ? 'Birden fazla varyant benzer; doğru olanı kontrol edin.' : 'Marka/varyant net değil; önerilen ürünü kontrol edin.');
   if (kind === 'serit' && !dims.length_mm && best && best.v.p.is_band) flags.push('Şerit boyu (mm) mesajda bulunamadı.');
   const confident = !!best && best.s >= 35 && flags.length === 0;
   return {

@@ -20,9 +20,10 @@ function playIntro() {
     let finished = false;
     const done = () => { if (finished) return; finished = true; ss('pm_intro_seen', '1'); el.classList.add('done'); setTimeout(() => { el.classList.add('hidden'); }, 420); res(); };
     el.querySelector('.skip').onclick = done;
-    const imgs = ['/img/pm-title.png', '/img/pm-sub.png', '/img/pm-glider.png'].map(u => new Promise(r => { const i = new Image(); i.onload = i.onerror = r; i.src = u; }));
-    const start = () => { requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('go'))); setTimeout(done, 2650); };
-    Promise.race([Promise.all(imgs), new Promise(r => setTimeout(r, 1500))]).then(() => setTimeout(start, 150));
+    // görseller çözülünce (decode) başlar: ilk karede takılma olmaz
+    const imgs = [...el.querySelectorAll('img')].map(i => (i.decode ? i.decode() : Promise.resolve()).catch(() => { }));
+    const start = () => { requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('go'))); setTimeout(done, 2500); };
+    Promise.race([Promise.all(imgs), new Promise(r => setTimeout(r, 1200))]).then(start);
   });
 }
 
@@ -199,6 +200,7 @@ window.PM_route = route;
 export const refreshBoot = async () => { S.boot = await api('/bootstrap'); shellKey = null; };
 
 (async () => {
-  await playIntro();
+  const intro = playIntro(); // panel arkada hazırlanır, animasyon bitince görünür
   route();
+  await intro;
 })();

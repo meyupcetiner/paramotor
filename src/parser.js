@@ -264,12 +264,13 @@ function parseOne(m, idx, sources, payments) {
 //  toplam: Wp5350₺ · wp4950₺ · Wp 27.500₺ KDV DAHİL · wp(MD) 11.400₺ · insta3150₺ · İnsta4160₺(özel iskontolu) · Mağaza 4700₺ [iban|toplam]
 //          Mağazada ödenicek Toplam 1950₺ · TOPLAM 11.580₺ · 4500₺ · 19.000₺ (M.cemal) · 1600₺ Nakit · Wp(değişim ...) = değişim, satış değil
 //  temsilci: (M.cemal) (Dogan) (DOGAN) (dogan) (M.arslan) (Dogan hdy) (M.arslan) (ödeme geldi) — yoksa gönderen kişi
-const STATUS_RE = /(kap[ıi]da|havale|eft|iban|resm[iİ]|gayr[iİ]|ma[gğ]aza|teslim|ptt|kargo|yurt[iİ]ç[iİ]|aras|mng|s[uü]rat|elden|nakit|kredi|k\.?\s?kart|[öo]deme|sat[ıi][şs]|pe[şs]in|adrese|b[ıi]rak|nakliye|acil|al[ıi]c[ıi]|p\.?ö)/i;
+const STATUS_RE = /(kap[ıi]da|havale|eft|iban|resm[iİ]|gayr[iİ]|ma[gğ]aza|teslim|ptt|kargo|yurt[iİ]ç[iİ]|aras|mng|s[uü]rat|elden|nakit|kredi|k\.?\s?kart|[öo]deme|sat[ıi][şs]|pe[şs]in|adrese|b[ıi]rak|nakliye|acil|al[ıi]c[ıi]|p\.?ö|reklam|bedelsiz|hediye|[uü]cretsiz|numune)/i;
 const SRC_MAP = [[/^(wp|wa|whatsapp|watsap)$/i, 'WhatsApp'], [/^(fb|face|facebook)$/i, 'Facebook'], [/^([iİı]g|[iİı]nsta|[iİı]nstagram)$/i, 'Instagram'], [/^(ma[gğ]aza|ma[gğ]azada|dükkan|dukkan)$/i, 'Mağaza']];
 const TAX_RE = /(?:\(?\s*([^()\d]*?)\s*V\.?\s*D\.?\s*(?:tax\s*no|vergi\s*no|vkn|tckn|no)?\s*[:.]?\s*([\d\s]{10,14})\s*\)?)|(?:\b(?:VKN|TCKN|vergi\s*no)\s*[:.]?\s*([\d\s]{10,14})(?:\s*V\.?\s*D\.?\s*([\p{L} ]+))?)/iu;
 const EMAIL_RE = /[\w.+-]+@[\w-]+\.[\w.]+/;
 const COMPANY_RE = /\b(ltd|şti|sti|a\.?ş\.?|ticaret|tic\.|san\.|sanayi|inşaat|insaat|i̇nş|limited|anonim|pazarlama|paz\.|yapı|yapi|ferforje|otomotiv|otomativ|makina|makine)\b/i;
 const CARGO_RE = /(anla[şs]ma|kargo\s*kod|kod[uü]\s*:)/i;
+const PROMO_RE = /(reklam|bedelsiz|[uü]cretsiz|hediye|numune|i[sş]\s*birli[gğ]i|influencer)/i;
 const EXCH_RE = /(de[gğ]i[şs]im|iade|tekrar\s*(gid|yap)|k[oö]t[uü]\s*olmu[şs]|geri\s*geldi|yine\s*gid)/i;
 const cap = s => s.replace(/(^|[\s.])(\p{L})/gu, (m, a, b) => a + b.toLocaleUpperCase('tr'));
 const repKey = s => fold(s).replace(/[^a-z0-9]/g, '');
@@ -319,7 +320,7 @@ function parseWA(m, idx, sources, payments, reps = []) {
         if (/resm[iİ]/i.test(l) && !/gayr/i.test(l)) o.is_official = true;
         if (/fatura bilgi/i.test(l)) { rest.push('FATURA BİLGİLERİ'); return; }
         const low = l.toLocaleLowerCase('tr');
-        const del = low.split(/\s+/).filter(w => !/^(gayr[iı]resm[iı]|kap[ıi]da|nakit|k\.?kart[ıi]?|kredi|kart[ıi]?|[öo]deme|resm[iı]|sat[ıi][şs][ıi]?|pe[şs]in)$/.test(w)).join(' ').trim();
+        const del = low.split(/\s+/).filter(w => !/^(gayr[iı]resm[iı]|kap[ıi]da|nakit|k\.?kart[ıi]?|kredi|kart[ıi]?|[öo]deme|resm[iı]|sat[ıi][şs][ıi]?|pe[şs]in|reklam|bedelsiz|hediye|[uü]cretsiz|numune)$/.test(w)).join(' ').trim();
         if (del) o.delivery = cap(del);
         if (/^ma[gğ]aza\b/.test(low) || /ma[gğ]aza(dan)?\s*(teslim|m[uü][şs]teri|ald[ıi])|karak[öo]y/.test(low)) o.store = true;
         return;
@@ -450,11 +451,14 @@ function parseWA(m, idx, sources, payments, reps = []) {
   if (o.source === 'Belirsiz') o.uncertain_fields.push('source');
   // iş kuralı: ödeme şekli hiç yazılmamış kargo siparişi = Havale
   if (o.payment === 'Belirsiz' && !o.anonymous && !o.store && !/kap[ıi]da/i.test(m.text) && payments.includes('Havale')) o.payment = 'Havale';
+  o.promo = !o.exchange && PROMO_RE.test(m.text.replace(/reklam\s*(ajans|ofis)\w*/ig, ''));
   if (o.payment === 'Belirsiz' && !o.anonymous && !o.store) o.uncertain_fields.push('payment');
+  if (o.promo) { o.payment = 'Belirsiz'; o.uncertain_fields = o.uncertain_fields.filter(x => x !== 'payment'); }
   if (!o.items.length) o.uncertain_fields.push('items');
   if (!o.date) o.uncertain_fields.push('date');
   // fiyatlar: tek ürün + toplam → satır toplamı; çok ürün → satır fiyatları, eksik tek satırı toplamdan tamamla
   if (o.exchange) { for (const it of o.items) { it.line_total = 0; } notes.unshift('DEĞİŞİM / TEKRAR GÖNDERİM — satış değil'); }
+  if (o.promo) { for (const it of o.items) { it.line_total = 0; it.uncertain = (it.uncertain || []).filter(u => !/price/.test(u)); } o.order_total = 0; }
   const priced = o.items.filter(it => it.line_total != null);
   if (o.items.length === 1 && o.items[0].line_total == null && o.order_total != null) o.items[0].line_total = o.order_total;
   else if (o.items.length > 1 && o.order_total != null) {

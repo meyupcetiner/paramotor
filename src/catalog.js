@@ -8,7 +8,7 @@ const D = 'Daire Testereler', S = 'Şerit Testereler', O = 'Diğer Ürünler';
 export const CATEGORIES = {
   [D]: ['Ahşap', 'MDF-Suntalam', 'Alüminyum-PVC', 'Metal', 'Betopan'],
   [S]: ['Karbon', 'Et-Kemik', 'Ahşap', 'Bimetal', 'Carbide', 'Kağıt-Sünger'],
-  [O]: ['El Testeresi', 'Planya Bıçağı', 'Endüstriyel Bıçak', 'Makine', 'Diğer'],
+  [O]: ['El Testeresi', 'Planya Bıçağı', 'Endüstriyel Bıçak', 'Çıkma', 'Makine', 'Diğer'],
   ['Hizmetler']: ['Bileme', 'Kaynak']
 };
 
@@ -73,6 +73,7 @@ export const FAMILIES = [
   // ---------------- Testeresan imalat ----------------
   { name: 'Testeresan Endüstriyel Bıçak (Özel İmalat)', mfr: 'Testeresan', cat: O, sub: 'Endüstriyel Bıçak', t: 'single', desc: 'CNC ile özel ölçü imalat bıçaklar. Ölçü satırda açıklamaya yazılır.', rows: [[]] },
   // hizmetler (WhatsApp geçmişindeki satışlardan)
+  { name: 'Çıkma Testere', mfr: 'Testeresan', cat: O, sub: 'Çıkma', t: 'single', desc: 'İkinci el (çıkma) testere. Ölçü/tür satır açıklamasına yazılır.', rows: [[]] },
   { name: 'Bileme Hizmeti', mfr: 'Testeresan', cat: 'Hizmetler', sub: 'Bileme', t: 'single', desc: 'Freze, daire, Dry Cut / TCT bileme, diş açma, tamir.', rows: [[]] },
   { name: 'Kaynak Hizmeti', mfr: 'Testeresan', cat: 'Hizmetler', sub: 'Kaynak', t: 'single', desc: 'Şerit kesim ve kaynak, kopan şerit kaynağı.', rows: [[]] }
 ];

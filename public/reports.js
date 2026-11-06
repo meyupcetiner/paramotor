@@ -60,7 +60,7 @@ export async function reportsPage(ctx) {
   <div class="muted small">${dmy(from)} – ${dmy(to)}${P ? ` · karşılaştırma: ${dmy(P.from)} – ${dmy(P.to)}` : ''}</div>
   <div class="grid4">
     <div class="card kpi"><div class="t">Toplam satış</div><div class="v">${money(r.total)}</div><div class="d">${delta(r.total, P && P.total)}</div></div>
-    <div class="card kpi"><div class="t">Sipariş sayısı</div><div class="v">${int(r.orders)}</div><div class="d">${delta(r.orders, P && P.orders)}</div></div>
+    <div class="card kpi"><div class="t">Sipariş sayısı</div><div class="v">${int(r.orders)}</div><div class="d">${delta(r.orders, P && P.orders)}${r.promo && r.promo.count ? ` <span class="muted">· +${int(r.promo.count)} reklam gönderimi</span>` : ''}</div></div>
     <div class="card kpi"><div class="t">Ortalama sepet</div><div class="v">${money(r.avgBasket)}</div><div class="d">${delta(r.avgBasket, P && P.avgBasket)}</div></div>
     <div class="card kpi"><div class="t">Tekil müşteri</div><div class="v">${int(r.customers)}</div><div class="d muted">Tekrar sipariş oranı ${pct(r.repeatRate)}</div></div>
   </div>

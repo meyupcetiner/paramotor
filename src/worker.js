@@ -44,6 +44,7 @@ async function ensureDB(env) {
   await env.DB.exec("CREATE TABLE IF NOT EXISTS sales_reps (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, aliases TEXT, color TEXT, sort INTEGER DEFAULT 0, active INTEGER DEFAULT 1);");
   const cols = await all(env, "PRAGMA table_info(invoices)");
   if (!cols.some(c => c.name === 'rep_id')) await env.DB.exec('ALTER TABLE invoices ADD COLUMN rep_id INTEGER;');
+  if (!cols.some(c => c.name === 'is_promo')) await env.DB.exec('ALTER TABLE invoices ADD COLUMN is_promo INTEGER DEFAULT 0;');
   // v2 göçü: KDV'siz varsayılan, yeni ödeme yöntemleri, temsilciler, hizmet ürünleri
   const mg = await first(env, "SELECT value FROM settings WHERE key='migr_v2'");
   if (!mg && await first(env, "SELECT COUNT(*) c FROM brands").then(r => r && r.c)) {
@@ -72,6 +73,10 @@ async function ensureDB(env) {
     const kay = await ensure('Kaynak Hizmeti', 'Kaynak', 'Şerit kesim ve kaynak, kopan şerit kaynağı.', ['Şerit Kaynak']);
     for (const x of svc) if (x.id !== bil && x.id !== kay) await run(env, 'UPDATE products SET active=0 WHERE id=?', x.id);
     await run(env, "INSERT INTO settings (key,value) VALUES ('migr_v3','1') ON CONFLICT(key) DO NOTHING");
+  }
+  if (!(await first(env, "SELECT id FROM products WHERE name='Çıkma Testere'"))) { // v4: çıkma testere ürünü
+    const r = await run(env, "INSERT INTO products (name,mfr,category,subcategory,unit,description,is_band,created_at) VALUES ('Çıkma Testere','Testeresan','Diğer Ürünler','Çıkma','Adet','İkinci el (çıkma) testere. Ölçü/tür satır açıklamasına yazılır.',0,?)", nowISO());
+    await run(env, "INSERT INTO variants (product_id,label,sort) VALUES (?,'Standart',0)", r.meta.last_row_id);
   }
   await normalizeServices(env);
   READY = true;
@@ -215,6 +220,7 @@ async function saveInvoice(env, brand, body, id = null, settings = null) {
       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, brand, seq, no, ...common, body.auto_batch_id || null, nowISO(), nowISO());
     id = r.meta.last_row_id;
   }
+  await run(env, 'UPDATE invoices SET is_promo=? WHERE id=?', body.is_promo ? 1 : 0, id);
   const stmts = calc.lines.map(l => env.DB.prepare('INSERT INTO invoice_lines (invoice_id,sort,product_id,variant_id,description,qty,unit,unit_price,vat_rate,band_length_mm,band_meters,line_net,line_vat) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)')
     .bind(id, l.sort, l.product_id, l.variant_id, l.description, l.qty, l.unit, l.unit_price, l.vat_rate, l.band_length_mm, l.band_meters, l.line_net, l.line_vat));
   if (stmts.length) await env.DB.batch(stmts);
@@ -266,7 +272,7 @@ export const SEGMENT_HELP = R => ({
 
 async function customerAggregates(env, brand, settings) {
   const custs = await all(env, 'SELECT * FROM customers WHERE brand_id=?', brand);
-  const sales = await loadSales(env, [brand]);
+  const sales = (await loadSales(env, [brand])).filter(i => !i.is_promo);
   const R = { ...DEFAULT_SETTINGS.segment_rules, ...(settings.segment_rules || {}) };
   const today = new Date().toISOString().slice(0, 10);
   const map = new Map(custs.map(c => [c.id, { ...c, order_count: 0, total: 0, net: 0, first_order: null, last_order: null, dates: [], sources: {}, payments: {}, products: {}, categories: {} }]));
@@ -388,7 +394,7 @@ async function markFirstOrders(env, invs, brands) {
 // ---------------- Gelir-Gider ----------------
 async function pnl(env, brand, from, to, settings) {
   const brands = brandFilter(brand);
-  const sales = await all(env, `SELECT brand_id, substr(date,1,7) m, SUM(subtotal) net, SUM(total) gross, COUNT(*) n FROM invoices WHERE date>=? AND date<=? GROUP BY brand_id, m`, from, to);
+  const sales = await all(env, `SELECT brand_id, substr(date,1,7) m, SUM(subtotal) net, SUM(total) gross, COUNT(*) n FROM invoices WHERE date>=? AND date<=? AND IFNULL(is_promo,0)=0 GROUP BY brand_id, m`, from, to);
   const exps = await all(env, 'SELECT * FROM expenses WHERE date>=? AND date<=? ORDER BY date DESC, id DESC', from, to);
   const revByBrand = {}; for (const s of sales) revByBrand[s.brand_id] = (revByBrand[s.brand_id] || 0) + s.gross;
   const totalRev = Object.values(revByBrand).reduce((a, b) => a + b, 0);
@@ -586,6 +592,7 @@ async function api(req, env, url) {
     if (q.get('source')) invs = invs.filter(i => multi('source').includes(String(i.source_id ?? 'none')));
     if (q.get('payment')) invs = invs.filter(i => multi('payment').includes(String(i.payment_id ?? 'none')));
     if (q.get('official')) invs = invs.filter(i => String(i.is_official) === q.get('official'));
+    if (q.get('promo')) invs = invs.filter(i => String(i.is_promo || 0) === q.get('promo'));
     if (q.get('rep')) invs = invs.filter(i => multi('rep').includes(String(i.rep_id ?? 'none')));
     if (q.get('il')) invs = invs.filter(i => (i.cust_il || 'Belirtilmemiş') === q.get('il'));
     if (q.get('ilce')) invs = invs.filter(i => i.cust_ilce === q.get('ilce'));
@@ -648,7 +655,8 @@ async function api(req, env, url) {
       const rep = repOf(o.rep);
       const items = (o.items || []).map(it => {
         const mt = matchItem({ ...it, raw_text: it.spec || it.raw_text }, cat);
-        if (mt.confidence === 'low') { mt.variant_id = null; mt.product_id = null; } // güvenle eşleşmeyen ürünü uydurma: mesajdaki metin kalır, öneriler listede
+        if (mt.confidence === 'low') { mt.variant_id = null; mt.product_id = null; }
+        if (it.second_hand) { const cv = cat.find(x => x.p.name === 'Çıkma Testere'); if (cv) { mt.variant_id = cv.id; mt.product_id = cv.product_id; mt.confidence = 'ok'; mt.flags = []; mt.dims = {}; } } // güvenle eşleşmeyen ürünü uydurma: mesajdaki metin kalır, öneriler listede
         const v = mt.variant_id ? cat.find(x => x.id === mt.variant_id) : null;
         const isBand = v ? !!v.p.is_band : it.kind === 'serit';
         const len = it.length_mm || mt.dims.length_mm || null;
@@ -659,12 +667,11 @@ async function api(req, env, url) {
         if ((it.uncertain || []).includes('qty') || qty == null) warn.push('Adet mesajda net değil.');
         if ((it.uncertain || []).includes('qty_assumed')) warn.push('Adet yazmıyor, 1 kabul edildi.');
         if ((it.uncertain || []).includes('price_even')) warn.push('Toplam ürünlere eşit bölündü.');
-        if (it.second_hand) warn.push('Çıkma (ikinci el) ürün — sıfır gibi kaydedilir, nota yazıldı.');
         if ((it.uncertain || []).includes('price_from_total')) warn.push('Birim fiyat sipariş toplamından hesaplandı.');
         if ((it.uncertain || []).includes('price_kind')) warn.push('Fiyatın birim mi satır toplamı mı olduğu net değil (toplam kabul edildi).');
         if (unit_price == null) warn.push('Fiyat mesajda yok.');
         for (const u of (it.uncertain || [])) if (!['qty', 'price', 'price_from_total', 'price_kind', 'price_split', 'price_even', 'qty_assumed'].includes(u)) warn.push(`Belirsiz: ${u}`);
-        return { raw_text: it.raw_text, note: it.note || '', product_id: mt.product_id, variant_id: mt.variant_id, description: v ? `${v.p.name}${v.label && v.label !== 'Standart' ? ' — ' + v.label : ''}` : (it.spec || it.raw_text || ''), is_band: isBand, band_length_mm: isBand ? len : null, qty: qty ?? 1, qty_missing: qty == null, unit_price: unit_price ?? 0, confidence: mt.confidence, score: mt.score, alternatives: mt.alternatives, warnings: warn };
+        return { raw_text: it.raw_text, note: it.note || '', product_id: mt.product_id, variant_id: mt.variant_id, description: v ? (it.second_hand ? `Çıkma Testere — ${String(it.spec || it.raw_text || '').replace(/\(?\s*(çıkma|cikma|ikinci el|2\.\s?el)\s*\)?/ig, '').trim()}` : `${v.p.name}${v.label && v.label !== 'Standart' ? ' — ' + v.label : ''}`) : (it.spec || it.raw_text || ''), is_band: isBand, band_length_mm: isBand ? len : null, qty: qty ?? 1, qty_missing: qty == null, unit_price: unit_price ?? 0, confidence: mt.confidence, score: mt.score, alternatives: mt.alternatives, warnings: warn };
       });
       // mükerrer kontrolü
       let duplicate = null;
@@ -676,7 +683,7 @@ async function api(req, env, url) {
         }
       }
       if (o.rep_from_sender && !rep) flags.push('rep_sender');
-      orders.push({ date: odate, exchange: !!o.exchange, vat_mode: o.vat_mode || null, rep_raw: o.rep || '', rep_id: rep ? rep.id : null, anonymous: !!o.anonymous, is_official: !!o.is_official, tax_no: o.tax_no || '', tax_office: o.tax_office || '', official_title: o.official_title || '', raw_text: o.raw_text || '', customer_name: o.customer_name || '', phone: np.ok ? np.phone : (o.phone || ''), address: o.address || '', il: o.il || '', ilce: o.ilce || '', source: o.source, source_id: srcId(o.source), payment: o.payment, payment_id: payId(o.payment), order_total: o.order_total ?? null, note, source_ref: o.source_ref || '', flags, existing_customer: existing, duplicate, items });
+      orders.push({ date: odate, exchange: !!o.exchange, is_promo: !!o.promo, vat_mode: o.vat_mode || null, rep_raw: o.rep || '', rep_id: rep ? rep.id : null, anonymous: !!o.anonymous, is_official: !!o.is_official, tax_no: o.tax_no || '', tax_office: o.tax_office || '', official_title: o.official_title || '', raw_text: o.raw_text || '', customer_name: o.customer_name || '', phone: np.ok ? np.phone : (o.phone || ''), address: o.address || '', il: o.il || '', ilce: o.ilce || '', source: o.source, source_id: srcId(o.source), payment: o.payment, payment_id: payId(o.payment), order_total: o.order_total ?? null, note, source_ref: o.source_ref || '', flags, existing_customer: existing, duplicate, items });
     }
     // aynı parti içinde mükerrer
     orders.forEach((o, i) => { for (let j = 0; j < i; j++) { const x = orders[j]; if (o.phone && o.phone === x.phone && JSON.stringify(o.items.map(t => t.variant_id || t.description).sort()) === JSON.stringify(x.items.map(t => t.variant_id || t.description).sort())) o.batch_duplicate_of = j; } });
@@ -708,7 +715,7 @@ async function api(req, env, url) {
     const batch = b.batch_id ? await first(env, 'SELECT * FROM auto_batches WHERE id=?', b.batch_id) : null;
     const ids = [];
     for (const o of b.orders || []) {
-      const inv = { brand: b.brand, date: o.date || b.date, auto_batch_id: b.batch_id || null, source_id: o.source_id || null, payment_id: o.payment_id || null, rep_id: o.rep_id || null, is_official: o.is_official ? 1 : 0, tax_no: o.tax_no, tax_office: o.tax_office, official_title: o.official_title, person_type: o.is_official ? 'tuzel' : null, prices_incl_vat: o.vat_mode === 'incl' ? 1 : 0, note: o.note || null, title: o.customer_name || null,
+      const inv = { brand: b.brand, date: o.date || b.date, auto_batch_id: b.batch_id || null, source_id: o.source_id || null, payment_id: o.payment_id || null, rep_id: o.rep_id || null, is_official: o.is_official ? 1 : 0, is_promo: o.is_promo ? 1 : 0, tax_no: o.tax_no, tax_office: o.tax_office, official_title: o.official_title, person_type: o.is_official ? 'tuzel' : null, prices_incl_vat: o.vat_mode === 'incl' ? 1 : 0, note: o.note || null, title: o.customer_name || null,
         customer: { name: o.customer_name, phone: o.phone, address: o.address, il: o.il, ilce: o.ilce },
         lines: (o.items || []).map(it => ({ product_id: it.product_id, variant_id: it.variant_id, description: it.description, qty: it.qty, unit_price: it.unit_price, vat_rate: o.vat_mode ? 20 : 0, band_length_mm: it.is_band ? it.band_length_mm : null, unit: 'Adet' })) };
       ids.push(await saveInvoice(env, b.brand, inv, null, settings));
@@ -744,7 +751,8 @@ async function api(req, env, url) {
     const from = q.get('from'), to = q.get('to'), vat = q.get('vat') || 'incl';
     const L = await lookups(env);
     const srcMap = Object.fromEntries(L.sources.map(s => [s.id, s.name])), payMap = Object.fromEntries(L.payments.map(s => [s.id, s.name]));
-    const invs = await loadSales(env, brands, from, to);
+    const all0 = await loadSales(env, brands, from, to); const invs = all0.filter(i => !i.is_promo);
+    const promoInv = all0.filter(i => i.is_promo); const promo = { count: promoInv.length, items: promoInv.reduce((a, i) => a + i.lines.reduce((b, l) => b + (Number(l.qty) || 0), 0), 0) };
     await markFirstOrders(env, invs, brands);
     const repMap = Object.fromEntries(L.reps.map(s => [s.id, s.name]));
     const opts = { vat, brands, srcMap, payMap, repMap, roll: Number(settings.band_roll_m) || 100 };
@@ -756,11 +764,11 @@ async function api(req, env, url) {
     let prev = null;
     if (q.get('cmp') === '1' && from && to) {
       const [pf, pt] = shiftPeriod(from, to);
-      const pinv = await loadSales(env, brands, pf, pt); await markFirstOrders(env, pinv, brands);
+      const pinv = (await loadSales(env, brands, pf, pt)).filter(i => !i.is_promo); await markFirstOrders(env, pinv, brands);
       const pr = salesReport(pinv, opts);
       prev = { from: pf, to: pt, byRep: pr.byRep, total: pr.total, orders: pr.orders, avgBasket: pr.avgBasket, customers: pr.customers, bySource: pr.bySource, byPayment: pr.byPayment, byBrand: pr.byBrand, daily: pr.daily, bandMeters: pr.bands.meters };
     }
-    return json({ ...cur, prev, from, to, vat });
+    return json({ ...cur, prev, from, to, vat, promo });
   }
 
   // --- dış veri aktarımı (ör. Paraşüt geçmişi): hazırlanmış JSON parça parça gönderilir ---

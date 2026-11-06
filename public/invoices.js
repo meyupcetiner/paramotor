@@ -2,8 +2,8 @@
 import { S, api, esc, $, $$, icon, toast, money, moneyHtml, int, dmy, today, parseNum, numIn, phoneFmt, phoneNorm, pill, srcById, payById, repById, brandById, loadCatalog, searchCatalog, variantById, autocomplete, tagPicker, ilIlce, matchIl, matchIlce, confirmBox, exportCSV, exportXLS, fold, rangePreset } from './core.js';
 import { setTitle } from './app.js';
 
-const FILTER_KEYS = ['from', 'to', 'source', 'payment', 'rep', 'official', 'il', 'ilce', 'product', 'category', 'customer', 'first', 'auto'];
-const LABELS = { from: 'Başlangıç', to: 'Bitiş', source: 'Kaynak', payment: 'Ödeme', rep: 'Temsilci', official: 'Resmi', il: 'İl', ilce: 'İlçe', product: 'Ürün', category: 'Kategori', customer: 'Müşteri', first: 'Müşteri tipi', auto: 'Otomatik parti' };
+const FILTER_KEYS = ['from', 'to', 'source', 'payment', 'rep', 'official', 'promo', 'il', 'ilce', 'product', 'category', 'customer', 'first', 'auto'];
+const LABELS = { from: 'Başlangıç', to: 'Bitiş', source: 'Kaynak', payment: 'Ödeme', rep: 'Temsilci', official: 'Resmi', promo: 'Tür', il: 'İl', ilce: 'İlçe', product: 'Ürün', category: 'Kategori', customer: 'Müşteri', first: 'Müşteri tipi', auto: 'Otomatik parti' };
 
 const nf = n => String(+n).replace('.', ',');
 const BAND_T = { Karbon: 'Karbon Şerit', Bimetal: 'Bimetal Şerit', Ahşap: 'Ahşap Şeridi', 'Et-Kemik': 'Et Şeridi', Carbide: 'Carbide Şerit', 'Kağıt-Sünger': 'Sünger Şeridi' };
@@ -12,6 +12,7 @@ const CIRC_T = { Ahşap: 'Ahşap', 'MDF-Suntalam': 'MDF', 'Alüminyum-PVC': 'Al�
 export function shortLabel(l) {
   if (!l.pname) { const d = String(l.description || '').replace(/\s+/g, ' ').trim(); return d.length > 42 ? d.slice(0, 40) + '…' : d; }
   const n = l.pname;
+  if (l.subcategory === 'Çıkma') return String(l.description || n).slice(0, 48);
   if (l.is_band) { const t = BAND_T[l.subcategory] || 'Şerit'; const size = l.band_length_mm && l.vwidth ? `${Math.round(l.band_length_mm)}x${nf(l.vwidth)}` : l.vwidth ? `${nf(l.vwidth)}x${nf(l.vthick)}` : ''; return [l.subcategory === 'Karbon' ? '' : l.mfr, t, size].filter(Boolean).join(' '); }
   if (/dry\s*cut/i.test(n)) return `${/paslanmaz/i.test(n) ? 'Paslanmaz ' : ''}DryCut${l.vdia ? ` ${nf(l.vdia)}x${l.vteeth || ''}` : ''}`.replace(/x$/, '');
   if (l.vdia && l.vteeth) { const t = /ağaç/i.test(n) ? 'Ağaç' : /çizici/i.test(n) ? 'Çizici' : /freze/i.test(n) ? 'Freze' : /portatif/i.test(n) ? 'Portatif' : (CIRC_T[l.subcategory] || ''); return [l.mfr, t, `${nf(l.vdia)}x${l.vteeth}`].filter(Boolean).join(' '); }
@@ -42,11 +43,12 @@ export async function invoicesPage(ctx) {
     <div class="field"><span>Ödeme yöntemi</span><select class="in sm" data-f="payment"><option value="">Tümü</option>${S.boot.payments.map(s => `<option value="${s.id}" ${query.get('payment') === String(s.id) ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}<option value="none" ${query.get('payment') === 'none' ? 'selected' : ''}>Belirsiz</option></select></div>
     <div class="field"><span>Satış temsilcisi</span><select class="in sm" data-f="rep"><option value="">Tümü</option>${(S.boot.reps || []).map(s => `<option value="${s.id}" ${query.get('rep') === String(s.id) ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}<option value="none" ${query.get('rep') === 'none' ? 'selected' : ''}>Belirtilmemiş</option></select></div>
     <div class="field"><span>Resmi / gayriresmi</span><select class="in sm" data-f="official"><option value="">Tümü</option><option value="1" ${query.get('official') === '1' ? 'selected' : ''}>Resmi satış</option><option value="0" ${query.get('official') === '0' ? 'selected' : ''}>Gayriresmi</option></select></div>
+    <div class="field"><span>Tür</span><select class="in sm" data-f="promo"><option value="">Tümü</option><option value="0" ${query.get('promo') === '0' ? 'selected' : ''}>Satış</option><option value="1" ${query.get('promo') === '1' ? 'selected' : ''}>Reklam (bedelsiz)</option></select></div>
     <div class="field"><span>İl</span><input class="in sm" data-f="il" value="${esc(query.get('il') || '')}" placeholder="ör. İstanbul"></div>
   </div><div class="row" style="padding:0 16px 14px"><span class="sp"></span><button class="btn sm" id="clr">Filtreleri temizle</button></div></div>
   ${active.length ? `<div class="chips">${active.map(k => `<span class="chip on" data-rm="${k}">${LABELS[k]}: ${esc(chipVal(k))} ✕</span>`).join('')}</div>` : ''}
   <div class="tbl-wrap"><table class="tbl list"><thead><tr><th>Müşteri</th><th>Ürünler</th><th>Tarih</th><th class="r">Toplam</th></tr></thead><tbody>
-  ${d.invoices.length ? d.invoices.map(i => { const s = srcById(i.source_id), p = payById(i.payment_id), rp = repById(i.rep_id); return `<tr class="click${i.is_official ? ' official' : ''}" data-id="${i.id}"><td><div class="t-title">${esc(i.title || i.cust_name || 'Mağaza müşterisi')}${i.cust_il ? ` <span class="t-il">${esc(i.cust_il)}</span>` : ''}${i.is_official ? ' <span class="tag-off">RESMİ SATIŞ</span>' : ''}</div><div class="tags">${s ? pill(s.name, s.color) : '<span class="pill out">KAYNAK?</span>'}${p ? pill(p.name, p.color) : '<span class="pill out">ÖDEME?</span>'}${rp ? `<span class="pill soft">${icon('user')} ${esc(rp.name)}</span>` : ''}</div></td>
+  ${d.invoices.length ? d.invoices.map(i => { const s = srcById(i.source_id), p = payById(i.payment_id), rp = repById(i.rep_id); return `<tr class="click${i.is_official ? ' official' : ''}${i.is_promo ? ' promo' : ''}" data-id="${i.id}"><td><div class="t-title">${esc(i.title || i.cust_name || 'Mağaza müşterisi')}${i.cust_il ? ` <span class="t-il">${esc(i.cust_il)}</span>` : ''}${i.is_official ? ' <span class="tag-off">RESMİ SATIŞ</span>' : ''}${i.is_promo ? ' <span class="tag-promo">REKLAM · BEDELSİZ</span>' : ''}</div><div class="tags">${s ? pill(s.name, s.color) : '<span class="pill out">KAYNAK?</span>'}${p ? pill(p.name, p.color) : i.is_promo ? '' : '<span class="pill out">ÖDEME?</span>'}${rp ? `<span class="pill soft">${icon('user')} ${esc(rp.name)}</span>` : ''}</div></td>
       <td class="t-prod">${i.lines.map(l => `<div>${esc(shortLine(l))}</div>`).slice(0, 3).join('')}${i.lines.length > 3 ? `<div class="t-sub">+${i.lines.length - 3} kalem</div>` : ''}</td>
       <td>${dmy(i.date)}</td><td class="r">${moneyHtml(i.total)}</td></tr>`; }).join('') : `<tr><td colspan="4"><div class="empty">Kayıt bulunamadı. <a href="#/b/${brand}/fatura/yeni">Yeni satış oluşturun</a> veya <a href="#/b/${brand}/otomatik">otomatik girin</a>.</div></td></tr>`}
   </tbody></table></div>
@@ -62,8 +64,8 @@ export async function invoicesPage(ctx) {
   $$('[data-rm]', el).forEach(c => c.onclick = () => setQ(c.dataset.rm, ''));
   $$('tr[data-id]', el).forEach(tr => tr.onclick = () => { location.hash = `#/b/${brand}/fatura/${tr.dataset.id}`; });
   $$('[data-pg]', el).forEach(b => b.onclick = () => setQ('page', b.dataset.pg));
-  const exportRows = async () => { const q = new URLSearchParams(qs); q.set('per', 500); const all = []; for (let pg = 1; ; pg++) { q.set('page', pg); const r = await api('/invoices?' + q); all.push(...r.invoices); if (all.length >= r.summary.count || !r.invoices.length) break; } return all.map(i => [dmy(i.date), i.invoice_no || '', i.title || '', i.cust_name || '', phoneFmt(i.cust_phone), i.cust_il || '', i.cust_ilce || '', (srcById(i.source_id) || {}).name || 'Belirsiz', (payById(i.payment_id) || {}).name || 'Belirsiz', (repById(i.rep_id) || {}).name || '', i.is_official ? 'Resmi' : 'Gayriresmi', i.lines.map(l => `${l.qty}× ${l.description}${l.band_length_mm ? ` (${l.band_length_mm} mm)` : ''}`).join(' | '), i.subtotal, i.vat_total, i.total]); };
-  const H = ['Tarih', 'Fatura No', 'Fatura İsmi', 'Müşteri', 'Telefon', 'İl', 'İlçe', 'Kaynak', 'Ödeme', 'Temsilci', 'Resmi', 'Ürünler', 'KDV Hariç', 'KDV', 'Toplam'];
+  const exportRows = async () => { const q = new URLSearchParams(qs); q.set('per', 500); const all = []; for (let pg = 1; ; pg++) { q.set('page', pg); const r = await api('/invoices?' + q); all.push(...r.invoices); if (all.length >= r.summary.count || !r.invoices.length) break; } return all.map(i => [dmy(i.date), i.invoice_no || '', i.title || '', i.cust_name || '', phoneFmt(i.cust_phone), i.cust_il || '', i.cust_ilce || '', (srcById(i.source_id) || {}).name || 'Belirsiz', (payById(i.payment_id) || {}).name || 'Belirsiz', (repById(i.rep_id) || {}).name || '', i.is_official ? 'Resmi' : 'Gayriresmi', i.is_promo ? 'Reklam (bedelsiz)' : 'Satış', i.lines.map(l => `${l.qty}× ${l.description}${l.band_length_mm ? ` (${l.band_length_mm} mm)` : ''}`).join(' | '), i.subtotal, i.vat_total, i.total]); };
+  const H = ['Tarih', 'Fatura No', 'Fatura İsmi', 'Müşteri', 'Telefon', 'İl', 'İlçe', 'Kaynak', 'Ödeme', 'Temsilci', 'Resmi', 'Tür', 'Ürünler', 'KDV Hariç', 'KDV', 'Toplam'];
   $('#xcsv', el).onclick = async () => exportCSV(`satislar-${brand}-${today()}`, H, await exportRows());
   $('#xxls', el).onclick = async () => exportXLS(`satislar-${brand}-${today()}`, [{ name: 'Satış Faturaları', headers: H, rows: await exportRows() }]);
 }
@@ -101,6 +103,7 @@ export async function invoiceForm(ctx, id) {
           <div class="g"><label class="field"><span>İl</span><input class="in sm" name="il" value="${esc(inv.customer.il)}" placeholder="İl ara"></label><label class="field"><span>İlçe</span><input class="in sm" name="ilce" value="${esc(inv.customer.ilce)}" placeholder="İlçe ara"></label></div>
         </div>
         <label class="chk official-toggle"><input type="checkbox" name="is_official" ${inv.is_official ? 'checked' : ''}> Resmi satış</label>
+        <label class="chk official-toggle"><input type="checkbox" name="is_promo" ${inv.is_promo ? 'checked' : ''}> Reklam / bedelsiz gönderim</label>
         <div class="cust-mini ${inv.is_official ? '' : 'hidden'}" id="off">
           <div class="g"><label class="field"><span>VKN / TCKN</span><input class="in sm" name="tax_no" value="${esc(inv.tax_no || '')}" inputmode="numeric"></label><label class="field"><span>Tür</span><select class="in sm" name="person_type"><option value="tuzel" ${inv.person_type !== 'gercek' ? 'selected' : ''}>Tüzel kişi</option><option value="gercek" ${inv.person_type === 'gercek' ? 'selected' : ''}>Gerçek kişi</option></select></label></div>
           <div class="g"><label class="field"><span>Resmi unvan (firma unvanı)</span><input class="in sm" name="official_title" value="${esc(inv.official_title || '')}"></label><label class="field"><span>Vergi dairesi</span><input class="in sm" name="tax_office" value="${esc(inv.tax_office || '')}"></label></div>
@@ -231,7 +234,7 @@ export async function invoiceForm(ctx, id) {
     const payload = {
       brand, title: f.title.value.trim(), date: f.date.value, invoice_no: f.invoice_no.value.trim(), order_info: f.order_info.value.trim(), note: f.note.value.trim(),
       source_id: inv.source_id, payment_id: inv.payment_id, rep_id: inv.rep_id, prices_incl_vat: f.prices_incl_vat.checked ? 1 : 0,
-      is_official: f.is_official.checked ? 1 : 0, tax_no: f.tax_no.value.trim(), official_title: f.official_title.value.trim(), tax_office: f.tax_office.value.trim(), person_type: f.person_type.value,
+      is_official: f.is_official.checked ? 1 : 0, is_promo: f.is_promo.checked ? 1 : 0, tax_no: f.tax_no.value.trim(), official_title: f.official_title.value.trim(), tax_office: f.tax_office.value.trim(), person_type: f.person_type.value,
       customer: { customer_id: inv.customer.customer_id || null, name, phone: phoneNorm(f.phone.value) || f.phone.value.trim(), address: f.address.value.trim(), il: f.il.value.trim(), ilce: f.ilce.value.trim() },
       lines: lines.map(l => ({ product_id: l.product_id, variant_id: l.variant_id, description: l.description, qty: Number(l.qty) || 0, unit: l.unit, unit_price: Number(l.unit_price) || 0, vat_rate: l.vat_rate, band_length_mm: l.is_band ? l.band_length_mm : null }))
     };

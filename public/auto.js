@@ -80,7 +80,7 @@ function missing(o) {
   const m = [];
   if (!o.anonymous) { if (!o.customer_name) m.push('customer_name'); if (!phoneNorm(o.phone)) m.push('phone'); }
   if (!o.source_id) m.push('source');
-  if (!o.payment_id && !o.anonymous && !o.is_official && !o.exchange) m.push('payment');
+  if (!o.payment_id && !o.anonymous && !o.exchange && !o.is_promo) m.push('payment');
   if (!o.date) m.push('date');
   if (!o.rep_id && !o.rep_raw) m.push('rep');
   if (!(o.items || []).length) m.push('items');
@@ -138,7 +138,7 @@ function orderCard(o, i) {
   const rp = repById(o.rep_id); const src = srcById(o.source_id), pay = payById(o.payment_id);
   const chip = (txt, cls, color) => txt ? `<span class="mchip ${cls}"${color ? ` style="--c:${esc(color)}"` : ''}>${esc(txt)}</span>` : '';
   const metaHtml = [chip(dmy(o.date), 'date'), chip(src && src.name, 'src', src && src.color), chip(pay && pay.name, 'pay', pay && pay.color), chip(rp ? rp.name : (o.rep_raw ? o.rep_raw + ' (yeni)' : ''), 'rep'), chip([o.ilce, o.il].filter(Boolean).join(' / '), 'loc')].filter(Boolean).join('');
-  const tags = [o.anonymous ? '<span class="pill soft">Mağaza · isimsiz</span>' : ex ? `<span class="badge-old">${ex.orders + 1}. sipariş</span>` : '', o.is_official ? '<span class="pill soft">Resmi</span>' : '', o.exchange ? '<span class="pill warn">Değişim — satış değil</span>' : '', o.duplicate ? `<span class="pill bad">Mükerrer: ${esc(o.duplicate.invoice_no)}</span>` : '', o.batch_duplicate_of !== undefined ? `<span class="pill bad">#${o.batch_duplicate_of + 1} ile aynı</span>` : ''].join('');
+  const tags = [o.anonymous ? '<span class="pill soft">Mağaza · isimsiz</span>' : ex ? `<span class="badge-old">${ex.orders + 1}. sipariş</span>` : '', o.is_official ? '<span class="pill soft">Resmi</span>' : '', o.is_promo ? '<span class="tag-promo" style="margin:0">REKLAM · BEDELSİZ</span>' : '', o.exchange ? '<span class="pill warn">Değişim — satış değil</span>' : '', o.duplicate ? `<span class="pill bad">Mükerrer: ${esc(o.duplicate.invoice_no)}</span>` : '', o.batch_duplicate_of !== undefined ? `<span class="pill bad">#${o.batch_duplicate_of + 1} ile aynı</span>` : ''].join('');
   const iss = [...miss.map(k => `${MISS_TR[k] || k} yok`), ...(o.items || []).flatMap((it, j) => itemIssues(it).map(t => (o.items.length > 1 ? `${j + 1}. ürün: ` : '') + t.toLowerCase()))];
   return `<div class="ocard ${o._ok && !o._off ? 'ok' : ''} ${o._off ? 'dis' : ''} ${iss.length && !o._off ? 'chk' : ''}" data-i="${i}">
     ${iss.length && !o._off ? `<div class="chkbar" data-open>${icon('warn')}<b>Kontrol et:</b> ${iss.map(esc).join(' · ')}</div>` : ''}
@@ -159,6 +159,7 @@ function orderCard(o, i) {
         <label class="field"><span>Ödeme</span><select class="in sm" data-k="payment_id"><option value="">Seçin</option>${S.boot.payments.filter(s => s.active).map(s => `<option value="${s.id}" ${o.payment_id === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></label>
         <label class="field"><span>Temsilci</span><select class="in sm" data-k="rep_id"><option value="">${o.rep_raw && !o.rep_id ? `Yeni: ${esc(o.rep_raw)}` : 'Belirtilmemiş'}</option>${(S.boot.reps || []).filter(s => s.active).map(s => `<option value="${s.id}" ${o.rep_id === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></label>
         <label class="field"><span>Resmi satış</span><select class="in sm" data-k="is_official"><option value="">Hayır</option><option value="1" ${o.is_official ? 'selected' : ''}>Evet</option></select></label>
+        <label class="field"><span>Tür</span><select class="in sm" data-k="is_promo"><option value="">Satış</option><option value="1" ${o.is_promo ? 'selected' : ''}>Reklam (bedelsiz)</option></select></label>
         <label class="field wide"><span>Adres</span><input class="in sm" data-k="address" value="${esc(o.address)}"></label>
         <label class="field wide"><span>Not</span><input class="in sm" data-k="note" value="${esc(o.note || '')}"></label>
         ${o.is_official ? `<label class="field wide"><span>Resmi unvan</span><input class="in sm" data-k="official_title" value="${esc(o.official_title || '')}"></label><label class="field"><span>VKN / TCKN</span><input class="in sm" data-k="tax_no" value="${esc(o.tax_no || '')}"></label><label class="field"><span>Vergi dairesi</span><input class="in sm" data-k="tax_office" value="${esc(o.tax_office || '')}"></label>` : ''}
@@ -192,7 +193,8 @@ function bindOrder(card, o, i, cnt) {
     inp.onchange = () => {
       const k = inp.dataset.k; let v = inp.value;
       if (['source_id', 'payment_id', 'rep_id'].includes(k)) v = v ? Number(v) : null;
-      if (k === 'is_official') v = !!v;
+      if (k === 'is_official' || k === 'is_promo') v = !!v;
+      if (k === 'is_promo' && v) for (const it of o.items) it.unit_price = 0;
       if (k === 'phone') { const n = phoneNorm(v); if (n) v = n; }
       if (k === 'il') { const m = matchIl(v); if (m) v = m; }
       if (k === 'ilce') { const m = matchIlce(o.il, v); if (m) v = m; }

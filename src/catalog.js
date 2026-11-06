@@ -39,7 +39,7 @@ export const FAMILIES = [
   { name: 'Kronberg Alüminyum PVC (Negatif Diş)', mfr: 'Kronberg', cat: D, sub: 'Alüminyum-PVC', t: 'circ', desc: 'Alüminyum ve plastik profil, hassas ve sessiz kesim.', rows: [[190,2.8,30,54],[200,2,32,64],[200,3,30,64],[230,3.2,30,72],[250,3.2,30,80],[275,2.4,30,48],[300,3.2,'30-32',96],[355,2.2,30,50],[350,3.4,32,108],[400,4,30,108],[400,3.8,'30-32',120],[420,3.8,'30-32',120],[450,4,30,72],[450,3.8,32,120],[450,4,32,132],[500,4,32,120],[550,4,50,68],[550,4.4,30,128]] },
   { name: 'Kronberg Metal Dry Cut', mfr: 'Kronberg', cat: D, sub: 'Metal', t: 'circ', desc: 'Demir alaşımlı profillerin kuru kesimi. Çevresel hız 25 m/sn.', rows: [[180,2.2,20,34],[190,2.2,20,38],[200,1.8,32,68],[210,2.2,30,40],[230,2.2,30,44],[250,2.2,30,48],[305,2.2,25.4,60],[305,2.2,25.4,80],[355,2.4,25.4,72],[355,2.4,25.4,90],[400,2.6,32,108]] },
   { name: 'Kronberg Paslanmaz Dry Cut', mfr: 'Kronberg', cat: D, sub: 'Metal', t: 'circ', desc: 'Paslanmaz profillerin kuru kesimi.', rows: [[305,2.2,25.4,72],[355,2.4,25.4,84]] },
-  { name: 'Kronberg Oluklu', mfr: 'Kronberg', cat: D, sub: 'MDF-Suntalam', t: 'circ', desc: 'Oluklu (Golden Line) elmas testere; laminant ve kaplı panel.', rows: [[250, '3.2/2.2', 30, 48], [303, '3.2/2.2', 30, 60]] },
+  { name: 'Kronberg Oluklu', mfr: 'Kronberg', cat: D, sub: 'MDF-Suntalam', t: 'circ', desc: 'Oluklu elmas testere; laminant ve kaplı panel.', rows: [[250, '3.2/2.2', 30, 48], [303, '3.2/2.2', 30, 60]] },
   // ---------------- Onci (Fransa) ----------------
   { name: 'Onci Ağaç Testeresi (Atlamalı Dolu Boş Diş)', mfr: 'Onci', cat: D, sub: 'Ahşap', t: 'circ', desc: 'Kalın ağaç, odun vb. kesim.', rows: [[250,2.2,30,24],[250,3.2,30,24],[300,2.5,30,28],[300,3.2,30,28],[350,3.6,30,32],[400,3.6,30,36],[450,4,30,36],[500,4,30,40]] },
   { name: 'Onci Ahşap Testeresi', mfr: 'Onci', cat: D, sub: 'Ahşap', t: 'circ', desc: 'Her türlü ağaç, plywood vb.', rows: [[250,3.2,30,48],[250,2.2,30,60],[250,3.2,30,60],[300,3.2,30,48],[300,3.2,30,60],[300,3.2,30,72]] },
@@ -47,7 +47,8 @@ export const FAMILIES = [
   { name: 'Onci Alüminyum PVC (Negatif Diş)', mfr: 'Onci', cat: D, sub: 'Alüminyum-PVC', t: 'circ', desc: 'Alüminyum ve plastik profil, hassas ve sessiz kesim.', rows: [[180,3,30,58],[210,3,30,64],[250,2.2,32,80],[250,3.2,32,80],[300,2.5,32,96],[300,3.2,'30-32',96],[350,3.2,32,108],[400,2.6,30,108],[400,3.6,32,120],[400,3.8,'30-32',120],[420,3.2,32,72],[420,3.8,30,72],[450,4,32,108]] },
   { name: 'Onci Alüminyum PVC (Pozitif Diş)', mfr: 'Onci', cat: D, sub: 'Alüminyum-PVC', t: 'circ', desc: 'Alüminyum ve plastik profil, pozitif diş.', rows: [[500,4,'30-32',120],[550,4.4,50,68]] },
   { name: 'Onci Kurt Diş', mfr: 'Onci', cat: D, sub: 'MDF-Suntalam', t: 'circ', desc: 'Kurt diş; MDF ve laminant.', rows: [[250, 3.2, 30, 80], [300, 3.2, 30, 96]] },
-  { name: 'Onci Oluklu', mfr: 'Onci', cat: D, sub: 'MDF-Suntalam', t: 'circ', desc: 'Oluklu (Golden Line) elmas testere; laminant ve kaplı panel.', rows: [[303, '3.2/2.2', 30, 60]] },
+  { name: 'Onci Goldenline Oluklu', mfr: 'Onci', cat: D, sub: 'MDF-Suntalam', t: 'circ', desc: 'Goldenline oluklu elmas testere; laminant ve kaplı panel.', rows: [[303, '3.2/2.2', 30, 60]] },
+  { name: 'Onci Goldenline', mfr: 'Onci', cat: D, sub: 'MDF-Suntalam', t: 'circ', desc: 'Goldenline elmas testere (oluklu olmayan).', rows: [[250, '-', 30, 80]] },
   // ---------------- Flamex ----------------
   { name: 'Flamex PCD Betopan Kesim Testeresi', mfr: 'Flamex', cat: D, sub: 'Betopan', t: 'circ', desc: 'Fibercement, pvc, pleksiglas. TCT\'ye göre ~50 kat ömür.', rows: [[184,1.8,30,6],[235,2,30,6],[255,2.2,30,6],[305,2.4,30,8]] },
   { name: 'Flamex Elmas Uçlu Gaz Beton El Testeresi', mfr: 'Flamex', cat: O, sub: 'El Testeresi', t: 'hand', desc: 'Ytong kesimi, tüm dişler elmas uçlu.', rows: [[630,34]] },
@@ -102,7 +103,7 @@ export function expandCatalog() {
     for (const r of f.rows) {
       if (f.t === 'circ' || f.t === 'circ3') {
         const [d, k, b, z] = r;
-        p.variants.push({ label: `Ø${d} × ${typeof k === 'number' ? num(k) : String(k).replace(/\./g, ',')} × ${num(b)}` + (z ? ` · Z${z}` : ''), diameter: d, thickness: typeof k === 'number' ? k : null, bore: String(b), teeth: z || null });
+        p.variants.push({ label: (k === '-' ? `Ø${d} × ${num(b)}` : `Ø${d} × ${typeof k === 'number' ? num(k) : String(k).replace(/\./g, ',')} × ${num(b)}`) + (z ? ` · Z${z}` : ''), diameter: d, thickness: typeof k === 'number' ? k : null, bore: String(b), teeth: z || null });
       } else if (f.t === 'band') {
         const [w, k, tp] = r;
         for (const t of splitTpi(tp)) p.variants.push({ label: `${w} × ${num(k)} mm · ${t} ${f.tpiLabel === 'hatve' ? 'hatve' : 'TPI'}`, width: w, thickness: k, tpi: t });

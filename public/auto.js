@@ -86,7 +86,7 @@ function missing(o) {
   if (!(o.items || []).length) m.push('items');
   return m;
 }
-const SHORT = [[/güvenle eşleşmedi/, 'Ürün bulunamadı'], [/Birden fazla varyant|Marka\/varyant/, 'Ürün emin değil'], [/Freud/, 'Freud yok, en yakını seçildi'], [/Şerit boyu/, 'Boy yok'], [/Adet mesajda net/, 'Adet belirsiz'], [/1 kabul/, 'Adet 1 sayıldı'], [/eşit bölündü/, 'Toplam eşit bölündü'], [/Çıkma/, 'Çıkma ürün'], [/sipariş toplamından/, null], [/birim mi satır/, 'Fiyat birim mi toplam mı?'], [/Fiyat mesajda yok/, 'Fiyat yok']];
+const SHORT = [[/güvenle eşleşmedi/, 'Ürün bulunamadı'], [/Birden fazla varyant|Marka\/varyant/, 'Ürün emin değil'], [/Freud/, 'Freud yok, en yakını seçildi'], [/Şerit boyu/, 'Boy yok'], [/diş sayısı katalogda yok/, 'Diş sayısı uymuyor'], [/Adet mesajda net/, 'Adet belirsiz'], [/1 kabul/, 'Adet 1 sayıldı'], [/eşit bölündü/, 'Toplam eşit bölündü'], [/Çıkma/, 'Çıkma ürün'], [/sipariş toplamından/, null], [/birim mi satır/, 'Fiyat birim mi toplam mı?'], [/Fiyat mesajda yok/, 'Fiyat yok']];
 const shortWarn = w => { for (const [re, t] of SHORT) if (re.test(w)) return t; return w.replace(/^Belirsiz:\s*/, '').slice(0, 28); };
 const itemIssues = it => { const out = [...new Set((it.warnings || []).filter(w => !(/Fiyat mesajda yok/.test(w) && Number(it.unit_price))).map(shortWarn).filter(Boolean))]; if (it.confidence === 'low' && !out.includes('Ürün bulunamadı') && !it.variant_id) out.unshift('Ürün bulunamadı'); return out; };
 const itemWarn = it => itemIssues(it).length > 0;

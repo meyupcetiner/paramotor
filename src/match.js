@@ -21,7 +21,7 @@ const SUB_WORDS = [
   ['Ahşap', /\b(ahsap|agac|odun|kereste|tomruk|ahşap|marangoz|sharper|kontrplak|plywood)/]
 ];
 const BRANDS = ['kronberg', 'onci', 'glg', 'krabbe', 'junior', 'schuster', 'flamex', 'testeresan'];
-const LINES = ['freze bileme', 'hss freze', 'drycut bileme', 'dry cut bileme', 'kaynak', 'tamir', 'multicut', 'probeam', 'durocut', 'powercut', 'flexback', 'signier', 'performer', 'steelmaster', 'woodmaster', 'slender', 'sharper', 'bonemaster', 'antifric', 'white', 'tialn', 'tin', 'cermet', 'kuyumcu', 'freze', 'portatif', 'cizici', 'friksiyon', 'vario', 'atlamali', 'oluklu', 'kurt dis', 'dry cut', 'paslanmaz', 'planya', 'gaz beton'];
+const LINES = ['freze bileme', 'hss freze', 'drycut bileme', 'dry cut bileme', 'kaynak', 'tamir', 'multicut', 'probeam', 'durocut', 'powercut', 'flexback', 'signier', 'performer', 'steelmaster', 'woodmaster', 'slender', 'sharper', 'bonemaster', 'antifric', 'white', 'tialn', 'tin', 'cermet', 'kuyumcu', 'freze', 'portatif', 'cizici', 'friksiyon', 'vario', 'atlamali', 'goldenline', 'oluklu', 'kurt dis', 'dry cut', 'paslanmaz', 'planya', 'gaz beton'];
 
 function numbersIn(t) {
   return (t.match(/\d+(?:[.,]\d+)?/g) || []).map(x => parseFloat(x.replace(',', '.')));
@@ -108,7 +108,8 @@ export function matchItem(item, catalog) {
     for (const l of lines) if (pname.includes(l)) { s += 15; why.push(l); }
     for (const w of words) if (pname.includes(w)) s += 4; else if (/^(pro|vario|tin|tialn|white|antifric)$/.test(w)) s -= 0; 
     if (/kurt dis|oluklu/.test(pname) && !lines.some(l => pname.includes(l))) s -= 12; // özel seriler ancak adı geçince
-    if (/goldenline/.test(t) && !/golden/.test(pname)) s -= 200; // Golden Line ayrı ürün: katalogda yoksa eşleşmez
+    if (/goldenline/.test(t) && !/golden/.test(pname)) s -= 200; // Goldenline ayrı seri
+    if (/golden/.test(pname) && !/goldenline/.test(t)) s -= 30;
     if (!words.includes('pro') && /\bpro\b/.test(pname)) s -= 3; if (!words.includes('vario') && /vario/.test(pname)) s -= 3;
     if (dims.diameter != null) { if (eqNum(v.diameter, dims.diameter, 0.5)) { s += 40; why.push('çap'); } else if (v.diameter != null) s -= 45; else s -= 20; }
     if (dims.teeth != null) { if (v.teeth != null && Number(v.teeth) === Number(dims.teeth)) { s += 25; why.push('diş'); } else if (v.teeth != null) s -= 20; }
@@ -132,6 +133,7 @@ export function matchItem(item, catalog) {
   if (kind === 'hizmet' && best && best.v.p.category === 'Hizmetler') { /* hizmet: tek başlık, uyarı yok */ }
   else if (second && best.s - second.s < 8 && !(!brand && best.v.p.subcategory === 'Karbon' && sameSpec(best, second))) flags.push(brand ? 'Birden fazla varyant benzer; doğru olanı kontrol edin.' : 'Marka/varyant net değil; önerilen ürünü kontrol edin.');
   if (kind === 'serit' && !dims.length_mm && best && best.v.p.is_band) flags.push('Şerit boyu (mm) mesajda bulunamadı.');
+  if (best && dims.teeth != null && best.v.teeth != null && Number(best.v.teeth) !== Number(dims.teeth)) flags.push('Bu diş sayısı katalogda yok, en yakını önerildi.');
   const confident = !!best && best.s >= 35 && flags.length === 0;
   return {
     variant_id: best && best.s >= 0 ? best.v.id : null,

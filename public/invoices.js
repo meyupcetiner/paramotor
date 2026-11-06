@@ -1,23 +1,17 @@
 // Satış Faturaları listesi + Yeni/Düzenle fatura formu (Paraşüt düzeni, istenen değişikliklerle)
 import { S, api, esc, $, $$, icon, toast, money, moneyHtml, int, dmy, today, parseNum, numIn, phoneFmt, phoneNorm, pill, srcById, payById, repById, brandById, loadCatalog, searchCatalog, variantById, autocomplete, tagPicker, ilIlce, matchIl, matchIlce, confirmBox, exportCSV, exportXLS, fold, rangePreset } from './core.js';
 import { setTitle } from './app.js';
+import { shortName } from './short.js';
 
 const FILTER_KEYS = ['from', 'to', 'source', 'payment', 'rep', 'official', 'il', 'ilce', 'product', 'category', 'customer', 'first', 'auto'];
 const LABELS = { from: 'Başlangıç', to: 'Bitiş', source: 'Kaynak', payment: 'Ödeme', rep: 'Temsilci', official: 'Resmi', il: 'İl', ilce: 'İlçe', product: 'Ürün', category: 'Kategori', customer: 'Müşteri', first: 'Müşteri tipi', auto: 'Otomatik parti' };
 
 const nf = n => String(+n).replace('.', ',');
-const BAND_T = { Karbon: 'Karbon Şerit', Bimetal: 'Bimetal Şerit', Ahşap: 'Ahşap Şeridi', 'Et-Kemik': 'Et Şeridi', Carbide: 'Carbide Şerit', 'Kağıt-Sünger': 'Sünger Şeridi' };
-const CIRC_T = { Ahşap: 'Ahşap', 'MDF-Suntalam': 'MDF', 'Alüminyum-PVC': 'Alüminyum', Metal: 'Metal', Betopan: 'Betopan' };
-// Kısa ürün başlığı: "DryCut 305x80", "Schuster Ahşap Şeridi 4100x25"
+// Kısa ürün başlığı (ortak kural: public/short.js)
 export function shortLabel(l) {
   if (!l.pname) { const d = String(l.description || '').replace(/\s+/g, ' ').trim(); return d.length > 42 ? d.slice(0, 40) + '…' : d; }
-  const n = l.pname;
-  if (l.subcategory === 'Çıkma') return String(l.description || n).slice(0, 48);
-  if (l.is_band) { const t = BAND_T[l.subcategory] || 'Şerit'; const size = l.band_length_mm && l.vwidth ? `${Math.round(l.band_length_mm)}x${nf(l.vwidth)}` : l.vwidth ? `${nf(l.vwidth)}x${nf(l.vthick)}` : ''; return [l.subcategory === 'Karbon' ? '' : l.mfr, t, size].filter(Boolean).join(' '); }
-  if (/dry\s*cut/i.test(n)) return `${/paslanmaz/i.test(n) ? 'Paslanmaz ' : ''}DryCut${l.vdia ? ` ${nf(l.vdia)}x${l.vteeth || ''}` : ''}`.replace(/x$/, '');
-  if (l.vdia && l.vteeth) { const t = /ağaç/i.test(n) ? 'Ağaç' : /çizici/i.test(n) ? 'Çizici' : /freze/i.test(n) ? 'Freze' : /portatif/i.test(n) ? 'Portatif' : (CIRC_T[l.subcategory] || ''); return [l.mfr, t, `${nf(l.vdia)}x${l.vteeth}`].filter(Boolean).join(' '); }
-  if (l.vdia) return `${n.replace(/\s*\(.*?\)/g, '')} ${nf(l.vdia)}${l.vthick ? 'x' + nf(l.vthick) : ''}`;
-  return n.replace(/\s*\(.*?\)/g, '');
+  if (l.subcategory === 'Çıkma') return String(l.description || l.pname).slice(0, 48);
+  return shortName({ name: l.pname, mfr: l.mfr, category: l.category, subcategory: l.subcategory, is_band: l.is_band }, { diameter: l.vdia, thickness: l.vthick, teeth: l.vteeth, width: l.vwidth }, { length_mm: l.band_length_mm });
 }
 const shortLine = l => (l.unit === 'Metre' ? `${nf(Math.round(l.qty * 100) / 100)} m ` : l.qty && +l.qty !== 1 ? `${int(l.qty)}× ` : '') + shortLabel(l);
 
@@ -87,7 +81,7 @@ export async function invoiceForm(ctx, id) {
     inv = { title: '', customer: pre ? { customer_id: pre.id, name: pre.name || '', phone: pre.phone || '', address: pre.address || '', il: pre.il || '', ilce: pre.ilce || '' } : { name: '', phone: '', address: '', il: '', ilce: '' }, ...(pre && pre.is_official ? { is_official: 1, tax_no: pre.tax_no, official_title: pre.official_title, tax_office: pre.tax_office, person_type: pre.person_type } : {}), date: today(), invoice_no: '', order_info: '', note: '', source_id: null, payment_id: null, rep_id: null, is_official: pre && pre.is_official ? 1 : 0, prices_incl_vat: st.prices_incl_vat_default ? 1 : 0, lines: [blankLine()] };
     setTitle(`<span class="crumb"><a href="#/b/${brand}/faturalar">Satış Faturaları</a> › </span>Yeni Fatura`);
   }
-  function blankLine() { return { product_id: null, variant_id: null, description: '', qty: 1, unit: 'Adet', unit_price: '', vat_rate: Number(st.default_vat ?? 0) || 0, band_length_mm: null, is_band: false }; }
+  function blankLine() { return { product_id: null, variant_id: null, description: '', qty: 1, unit: 'Adet', unit_price: '', vat_rate: (document.querySelector('#f [name=is_official]')?.checked || inv?.is_official) ? 20 : Number(st.default_vat ?? 0) || 0, band_length_mm: null, is_band: false }; }
   const custOrders = { n: id ? inv.customer_order_no : null };
   if (!id && inv.customer.customer_id) { const pc = await api('/customers/' + inv.customer.customer_id); custOrders.n = (pc.invoices || []).length + 1; }
 
@@ -134,7 +128,7 @@ export async function invoiceForm(ctx, id) {
   ilIlce(f.il, f.ilce);
   $('#addno', el).onclick = e => { e.target.style.display = 'none'; $('#norow', el).classList.remove('hidden'); f.invoice_no.focus(); };
   $('#addord', el).onclick = e => { e.target.style.display = 'none'; $('#ordrow', el).classList.remove('hidden'); f.order_info.focus(); };
-  f.is_official.onchange = () => { $('#off', el).classList.toggle('hidden', !f.is_official.checked); if (f.is_official.checked && !f.official_title.value) f.official_title.value = f.name.value; };
+
 
   // --- müşteri arama / eşleştirme ---
   const badge = () => {
@@ -218,6 +212,13 @@ export async function invoiceForm(ctx, id) {
   f.prices_incl_vat.onchange = calc;
   $('#addl', el).onclick = () => { inv.lines.push(blankLine()); drawLines(); lb.querySelector(`tr.line[data-i="${inv.lines.length - 1}"] [data-k=description]`).focus(); };
   drawLines();
+  // resmi satış: fiyatlar KDV dahil, sabit %20 (yazmaya gerek yok)
+  f.is_official.onchange = () => {
+    const on = f.is_official.checked;
+    $('#off', el).classList.toggle('hidden', !on); if (on && !f.official_title.value) f.official_title.value = f.name.value;
+    for (const l of inv.lines) l.vat_rate = on ? 20 : Number(st.default_vat ?? 0) || 0;
+    f.prices_incl_vat.checked = on; drawLines(); calc();
+  };
 
   if (id) $('#del', el).onclick = async () => { if (!(await confirmBox('Bu fatura kalıcı olarak silinsin mi?'))) return; await api.del('/invoices/' + id); toast('Fatura silindi'); location.hash = `#/b/${brand}/faturalar`; };
 

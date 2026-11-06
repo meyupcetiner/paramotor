@@ -2,6 +2,7 @@
 import { SCHEMA } from './schema.js';
 import { expandCatalog, CATEGORIES } from './catalog.js';
 import { matchItem, fold } from './match.js';
+import { shortName } from '../public/short.js';
 import { parseText, normalizePhone, canonIlIlce } from './parser.js';
 import { extractWithClaude } from './claude.js';
 
@@ -78,6 +79,29 @@ async function ensureDB(env) {
   if (!(await first(env, "SELECT id FROM products WHERE name='Çıkma Testere'"))) { // v4: çıkma testere ürünü
     const r = await run(env, "INSERT INTO products (name,mfr,category,subcategory,unit,description,is_band,created_at) VALUES ('Çıkma Testere','Testeresan','Diğer Ürünler','Çıkma','Adet','İkinci el (çıkma) testere. Ölçü/tür satır açıklamasına yazılır.',0,?)", nowISO());
     await run(env, "INSERT INTO variants (product_id,label,sort) VALUES (?,'Standart',0)", r.meta.last_row_id);
+  }
+  if (!(await first(env, "SELECT value FROM settings WHERE key='migr_v5'"))) {
+    // resmi satış = fiyatlar KDV dahil, sabit %20: KDV'si ayrılmamış resmi satışlarda tutar aynı kalır, KDV içinden ayrılır
+    const offs = await all(env, 'SELECT id FROM invoices WHERE is_official=1 AND IFNULL(vat_total,0)=0');
+    for (let i = 0; i < offs.length; i += 50) {
+      const ids = offs.slice(i, i + 50).map(x => x.id); const ph = ids.map(() => '?').join(',');
+      await env.DB.batch([
+        env.DB.prepare(`UPDATE invoice_lines SET vat_rate=20, line_vat=ROUND(line_net - line_net/1.2, 2), line_net=ROUND(line_net/1.2, 2), unit_price=ROUND(unit_price/1.2, 4) WHERE invoice_id IN (${ph}) AND IFNULL(line_vat,0)=0`).bind(...ids),
+        env.DB.prepare(`UPDATE invoices SET prices_incl_vat=1, subtotal=(SELECT ROUND(SUM(line_net),2) FROM invoice_lines WHERE invoice_id=invoices.id), vat_total=(SELECT ROUND(SUM(line_vat),2) FROM invoice_lines WHERE invoice_id=invoices.id) WHERE id IN (${ph})`).bind(...ids)
+      ]);
+    }
+    // eşleşmiş ürün satırlarında uzun adı kısa ada çevir ("Kronberg Metal Dry Cut — Ø305 × 2,2 × 25,4 · Z80" → "Kronberg Drycut 305x80")
+    const ls = await all(env, "SELECT l.id, l.description, p.name, p.mfr, p.category, p.subcategory, p.is_band, v.label, v.diameter, v.thickness, v.teeth, v.width, v.tpi, v.length FROM invoice_lines l JOIN products p ON p.id=l.product_id LEFT JOIN variants v ON v.id=l.variant_id");
+    const ups = [];
+    for (const l of ls) {
+      const long = l.label && l.label !== 'Standart' ? `${l.name} — ${l.label}` : l.name;
+      if (l.description !== long) continue;
+      const sn = shortName(l, l, { withTpi: true }); if (sn && sn !== l.description) ups.push(env.DB.prepare('UPDATE invoice_lines SET description=? WHERE id=?').bind(sn, l.id));
+    }
+    for (let i = 0; i < ups.length; i += 100) await env.DB.batch(ups.slice(i, i + 100));
+    const ck = await all(env, "SELECT id, invoice_id, description FROM invoice_lines WHERE description LIKE 'Çıkma Testere — %'");
+    for (const l of ck) { const sp = l.description.replace(/^Çıkma Testere — /, '').replace(/testere/ig, ' ').replace(/\s+/g, ' ').trim(); await run(env, "UPDATE invoice_lines SET description='Çıkma Testere' WHERE id=?", l.id); if (sp) await run(env, "UPDATE invoices SET note = TRIM(? || CASE WHEN COALESCE(note,'')='' THEN '' ELSE ' · ' || note END) WHERE id=?", 'Çıkma: ' + sp, l.invoice_id); }
+    await run(env, "INSERT INTO settings (key,value) VALUES ('migr_v5','1') ON CONFLICT(key) DO NOTHING");
   }
   await normalizeServices(env);
   READY = true;
@@ -241,7 +265,7 @@ async function loadSales(env, brands, from, to) {
   const lines = [];
   for (let i = 0; i < ids.length; i += 90) {
     const chunk = ids.slice(i, i + 90);
-    lines.push(...await all(env, `SELECT l.*, p.name pname, p.category, p.subcategory, p.mfr, p.is_band, v.label vlabel, v.width vwidth, v.thickness vthick, v.diameter vdia, v.teeth vteeth FROM invoice_lines l LEFT JOIN products p ON p.id=l.product_id LEFT JOIN variants v ON v.id=l.variant_id WHERE l.invoice_id IN (${chunk.map(() => '?').join(',')})`, ...chunk));
+    lines.push(...await all(env, `SELECT l.*, p.name pname, p.category, p.subcategory, p.mfr, p.is_band, v.label vlabel, v.width vwidth, v.thickness vthick, v.diameter vdia, v.teeth vteeth, v.tpi vtpi FROM invoice_lines l LEFT JOIN products p ON p.id=l.product_id LEFT JOIN variants v ON v.id=l.variant_id WHERE l.invoice_id IN (${chunk.map(() => '?').join(',')})`, ...chunk));
   }
   const by = new Map(invs.map(i => [i.id, { ...i, lines: [] }]));
   for (const l of lines) by.get(l.invoice_id)?.lines.push(l);
@@ -659,11 +683,13 @@ async function api(req, env, url) {
       const odate = o.date || b.date || null;
       if (!odate && !flags.includes('date')) flags.push('date');
       const rep = repOf(o.rep);
+      const cikma = [];
       const items = (o.items || []).map(it => {
         const mt = matchItem({ ...it, raw_text: it.spec || it.raw_text }, cat);
         if (mt.confidence === 'low') { mt.variant_id = null; mt.product_id = null; }
         if (it.second_hand) { const cv = cat.find(x => x.p.name === 'Çıkma Testere'); if (cv) { mt.variant_id = cv.id; mt.product_id = cv.product_id; mt.confidence = 'ok'; mt.flags = []; mt.dims = {}; } } // güvenle eşleşmeyen ürünü uydurma: mesajdaki metin kalır, öneriler listede
         const v = mt.variant_id ? cat.find(x => x.id === mt.variant_id) : null;
+        if (it.second_hand) { const sp = String(it.spec || it.raw_text || '').replace(/^\s*\d+\s*[-–]\s*/, '').replace(/\(|\)/g, ' ').replace(/(çıkma|cikma|ikinci\s*el|2\.\s?el|testeresi|testere)/ig, ' ').replace(/\s+/g, ' ').trim(); if (sp) cikma.push(sp); }
         const isBand = v ? !!v.p.is_band : it.kind === 'serit';
         const len = it.length_mm || mt.dims.length_mm || null;
         const qty = it.qty ?? null;
@@ -677,7 +703,7 @@ async function api(req, env, url) {
         if ((it.uncertain || []).includes('price_kind')) warn.push('Fiyatın birim mi satır toplamı mı olduğu net değil (toplam kabul edildi).');
         if (unit_price == null) warn.push('Fiyat mesajda yok.');
         for (const u of (it.uncertain || [])) if (!['qty', 'price', 'price_from_total', 'price_kind', 'price_split', 'price_even', 'qty_assumed'].includes(u)) warn.push(`Belirsiz: ${u}`);
-        return { raw_text: it.raw_text, note: it.note || '', product_id: mt.product_id, variant_id: mt.variant_id, description: v ? (it.second_hand ? `Çıkma Testere — ${String(it.spec || it.raw_text || '').replace(/\(?\s*(çıkma|cikma|ikinci el|2\.\s?el)\s*\)?/ig, '').trim()}` : `${v.p.name}${v.label && v.label !== 'Standart' ? ' — ' + v.label : ''}`) : (it.spec || it.raw_text || ''), is_band: isBand, band_length_mm: isBand ? len : null, qty: qty ?? 1, qty_missing: qty == null, unit_price: unit_price ?? 0, confidence: mt.confidence, score: mt.score, alternatives: mt.alternatives, warnings: warn };
+        return { raw_text: it.raw_text, note: it.note || '', product_id: mt.product_id, variant_id: mt.variant_id, description: v ? (it.second_hand ? 'Çıkma Testere' : shortName(v.p, v, { withTpi: true })) : (it.spec || it.raw_text || ''), is_band: isBand, band_length_mm: isBand ? len : null, qty: qty ?? 1, qty_missing: qty == null, unit_price: unit_price ?? 0, confidence: mt.confidence, score: mt.score, alternatives: mt.alternatives, warnings: warn };
       });
       // mükerrer kontrolü
       let duplicate = null;
@@ -689,6 +715,7 @@ async function api(req, env, url) {
         }
       }
       if (o.rep_from_sender && !rep) flags.push('rep_sender');
+      if (cikma.length) note = [cikma.map(x => 'Çıkma: ' + x).join(', '), note].filter(Boolean).join(' · ');
       orders.push({ date: odate, exchange: !!o.exchange, is_promo: !!o.promo, vat_mode: o.vat_mode || null, rep_raw: o.rep || '', rep_id: rep ? rep.id : null, anonymous: !!o.anonymous, is_official: !!o.is_official, tax_no: o.tax_no || '', tax_office: o.tax_office || '', official_title: o.official_title || '', raw_text: o.raw_text || '', customer_name: o.customer_name || '', phone: np.ok ? np.phone : (o.phone || ''), address: o.address || '', il: o.il || '', ilce: o.ilce || '', source: o.source, source_id: srcId(o.source), payment: o.payment, payment_id: payId(o.payment), order_total: o.order_total ?? null, note, source_ref: o.source_ref || '', flags, existing_customer: existing, duplicate, items });
     }
     // aynı parti içinde mükerrer
@@ -721,9 +748,9 @@ async function api(req, env, url) {
     const batch = b.batch_id ? await first(env, 'SELECT * FROM auto_batches WHERE id=?', b.batch_id) : null;
     const ids = [];
     for (const o of b.orders || []) {
-      const inv = { brand: b.brand, date: o.date || b.date, auto_batch_id: b.batch_id || null, source_id: o.source_id || null, payment_id: o.payment_id || null, rep_id: o.rep_id || null, is_official: o.is_official ? 1 : 0, is_promo: o.is_promo ? 1 : 0, tax_no: o.tax_no, tax_office: o.tax_office, official_title: o.official_title, person_type: o.is_official ? 'tuzel' : null, prices_incl_vat: o.vat_mode === 'incl' ? 1 : 0, note: o.note || null, title: o.customer_name || null,
+      const inv = { brand: b.brand, date: o.date || b.date, auto_batch_id: b.batch_id || null, source_id: o.source_id || null, payment_id: o.payment_id || null, rep_id: o.rep_id || null, is_official: o.is_official ? 1 : 0, is_promo: o.is_promo ? 1 : 0, tax_no: o.tax_no, tax_office: o.tax_office, official_title: o.official_title, person_type: o.is_official ? 'tuzel' : null, prices_incl_vat: o.vat_mode === 'excl' ? 0 : (o.is_official || o.vat_mode === 'incl') ? 1 : 0, note: o.note || null, title: o.customer_name || null,
         customer: { name: o.customer_name, phone: o.phone, address: o.address, il: o.il, ilce: o.ilce },
-        lines: (o.items || []).map(it => ({ product_id: it.product_id, variant_id: it.variant_id, description: it.description, qty: it.qty, unit_price: it.unit_price, vat_rate: o.vat_mode ? 20 : 0, band_length_mm: it.is_band ? it.band_length_mm : null, unit: 'Adet' })) };
+        lines: (o.items || []).map(it => ({ product_id: it.product_id, variant_id: it.variant_id, description: it.description, qty: it.qty, unit_price: it.unit_price, vat_rate: (o.is_official || o.vat_mode) ? 20 : 0, band_length_mm: it.is_band ? it.band_length_mm : null, unit: 'Adet' })) };
       ids.push(await saveInvoice(env, b.brand, inv, null, settings));
     }
     if (batch) {

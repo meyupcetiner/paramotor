@@ -1,4 +1,5 @@
 // Paramotor — çekirdek yardımcılar: API, biçimlendirme, ikonlar, bileşenler, grafikler, dışa aktarma
+import { shortName } from './short.js';
 export const S = { boot: null, catalog: null, catIndex: null };
 
 export async function api(path, opt = {}) {
@@ -116,7 +117,7 @@ export async function loadCatalog(force) {
   S.catIndex = [];
   for (const p of prods) {
     if (!p.active) continue;
-    for (const v of p.variants) if (v.active) S.catIndex.push({ ...v, p, text: `${p.name} — ${v.label}`, f: fold(`${p.name} ${p.mfr} ${p.category} ${p.subcategory} ${v.label} ${v.label.replace(/[^\d,.]+/g, ' ')}`).replace(/,/g, '.').replace(/[×*]/g, 'x') });
+    for (const v of p.variants) if (v.active) S.catIndex.push({ ...v, p, text: shortName(p, v, { withTpi: true }), f: fold(`${p.name} ${p.mfr} ${p.category} ${p.subcategory} ${v.label} ${v.label.replace(/[^\d,.]+/g, ' ')}`).replace(/,/g, '.').replace(/[×*]/g, 'x') });
   }
   return prods;
 }

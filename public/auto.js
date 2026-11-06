@@ -144,7 +144,7 @@ function orderCard(o, i) {
     ${iss.length && !o._off ? `<div class="chkbar" data-open>${icon('warn')}<b>Kontrol et:</b> ${iss.map(esc).join(' · ')}</div>` : ''}
     <div class="top"><span class="num">${i + 1}</span>
       <div class="who"><input data-k="customer_name" value="${esc(o.customer_name)}" placeholder="${o.anonymous ? 'Mağaza müşterisi (isimsiz)' : 'Ad soyad'}"><div class="meta">${metaHtml} ${tags}</div></div>
-      <div class="sum">${money(orderTotal(o))}${o.order_total != null && Math.abs(o.order_total - orderTotal(o)) > 1 ? `<small>mesajda ${money(o.order_total)}</small>` : ''}</div>
+      <div class="sum">${money(orderTotal(o))}${o.order_total != null && Math.abs(o.order_total - orderTotal(o)) > 1 ? `<small>mesajda ${money(o.order_total)}</small>` : ''}${o.is_official && orderTotal(o) ? `<small class="vatline">KDV hariç ${money(orderTotal(o) / 1.2)} · KDV %20 ${money(orderTotal(o) - orderTotal(o) / 1.2)}</small>` : ''}</div>
       <div class="row" style="gap:6px"><label class="chk-ok ${o._ok && !o._off ? 'on' : ''}"><input type="checkbox" data-a="ok" ${o._ok ? 'checked' : ''}>${icon('check')} Onayla</label><button class="btn sm ghost icon" data-a="off" title="${o._off ? 'Geri al' : 'Atla'}">${icon(o._off ? 'history' : 'x')}</button></div></div>
     <div class="items">${(o.items || []).map((it, j) => itemRow(it, j)).join('')}</div>
     <div class="foot">
@@ -209,7 +209,7 @@ function bindOrder(card, o, i, cnt) {
     autocomplete(d, q => searchCatalog(q, 40).map(v => ({ html: `<b>${esc(v.p.name)}</b> <small>${esc(v.label)}</small>`, group: `${v.p.category} › ${v.p.subcategory}`, v })), x => pick(x.v));
     d.oninput = () => { it.description = d.value; it.variant_id = null; it.product_id = null; };
     const alt = row.querySelector('[data-ik=alt]'); if (alt) alt.onchange = () => { const v = variantById(alt.value); if (v) pick(v); };
-    const upd = () => { const s = card.querySelector('.sum'); if (s) s.firstChild.textContent = money(orderTotal(o)); };
+    const upd = () => { const s = card.querySelector('.sum'); if (s) s.firstChild.textContent = money(orderTotal(o)); const vl = card.querySelector('.vatline'); if (vl) { const t = orderTotal(o); vl.textContent = `KDV hariç ${money(t / 1.2)} · KDV %20 ${money(t - t / 1.2)}`; } };
     for (const k of ['qty', 'unit_price', 'band_length_mm']) { const x = row.querySelector(`[data-ik=${k}]`); if (x) { x.onchange = () => { const re = { qty: /Adet/, unit_price: /Fiyat|eşit bölündü|birim mi/, band_length_mm: /Şerit boyu/ }[k]; const before = (it.warnings || []).length; it.warnings = (it.warnings || []).filter(w => !re.test(w)); if (it.warnings.length !== before) redraw(); }; } if (x) x.oninput = () => { it[k] = parseNum(x.value); if (k === 'qty') it.qty_missing = false; row.querySelector('[data-ik=line_total]').value = numIn((Number(it.qty) || 0) * (Number(it.unit_price) || 0)); upd(); }; }
     const lt = row.querySelector('[data-ik=line_total]'); lt.oninput = () => { const t = parseNum(lt.value); if (t != null && Number(it.qty)) { it.unit_price = +(t / Number(it.qty)).toFixed(4); row.querySelector('[data-ik=unit_price]').value = numIn(it.unit_price); } upd(); };
     row.querySelector('[data-a=rmitem]').onclick = () => { o.items.splice(+row.dataset.j, 1); redraw(); };

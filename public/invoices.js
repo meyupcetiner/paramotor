@@ -18,7 +18,7 @@ export function shortLabel(l) {
   if (l.vdia) return `${n.replace(/\s*\(.*?\)/g, '')} ${nf(l.vdia)}${l.vthick ? 'x' + nf(l.vthick) : ''}`;
   return n.replace(/\s*\(.*?\)/g, '');
 }
-const shortLine = l => (l.qty && +l.qty !== 1 ? `${int(l.qty)}× ` : '') + shortLabel(l);
+const shortLine = l => (l.unit === 'Metre' ? `${nf(Math.round(l.qty * 100) / 100)} m ` : l.qty && +l.qty !== 1 ? `${int(l.qty)}× ` : '') + shortLabel(l);
 
 export async function invoicesPage(ctx) {
   const { brand, query, el } = ctx;

@@ -1,5 +1,5 @@
 // Ürünler (fiyatsız katalog) ve Ayarlar
-import { S, api, esc, $, $$, icon, toast, int, today, parseNum, numIn, pill, loadCatalog, modal, confirmBox, exportCSV, fold, shrinkImage } from './core.js';
+import { S, api, esc, $, $$, icon, toast, int, today, parseNum, numIn, pill, loadCatalog, modal, confirmBox, exportCSV, fold, shrinkImage, brandById } from './core.js';
 import { setTitle, refreshBoot } from './app.js';
 
 export async function productsPage(ctx) {
@@ -70,7 +70,7 @@ export async function settingsPage(ctx) {
   const b = S.boot, st = b.settings, tab = query.get('tab') || 'markalar';
   const base = ctx.base + 'ayarlar';
   const R = st.segment_rules || {};
-  const TABS = [['markalar', 'Marka Ayarları'], ['etiketler', 'Kaynak, Ödeme, Temsilci'], ['segment', 'Segment Kuralları'], ['genel', 'Genel'], ['guvenlik', 'Güvenlik ve Yedek']];
+  const TABS = [['markalar', 'Marka Ayarları'], ['etiketler', 'Kaynak, Ödeme, Temsilci'], ['segment', 'Segment Kuralları'], ['genel', 'Genel'], ['guvenlik', 'Güvenlik ve Yedek'], ['aktarim', 'Veri Aktarımı']];
   let html = `<div class="tabs">${TABS.map(([k, l]) => `<a href="${base}?tab=${k}" class="${tab === k ? 'on' : ''}">${l}</a>`).join('')}</div>`;
   if (tab === 'markalar') html += `<div class="rgrid">${b.brands.map(x => `<form class="card c4" data-b="${x.id}"><div class="bd" style="display:grid;gap:12px;padding-top:18px">
       <div style="background:#fff;border-radius:12px;height:150px;display:grid;place-items:center;padding:12px">${x.logo ? `<img src="${esc(x.logo)}" style="max-height:126px;object-fit:contain" data-prev>` : `<b style="color:#333" data-prev>${esc(x.name)}</b>`}</div>
@@ -99,7 +99,42 @@ export async function settingsPage(ctx) {
       <div><button class="btn pri">Kaydet</button></div></div></form>`;
   if (tab === 'guvenlik') html += `<div class="rgrid"><form class="card c6" id="pwf"><div class="hd"><h3>Şifre değiştir</h3></div><div class="bd" style="display:grid;gap:10px"><label class="field"><span>Mevcut şifre</span><input class="in" type="password" name="old" autocomplete="current-password"></label><label class="field"><span>Yeni şifre (en az 6 karakter)</span><input class="in" type="password" name="pw" autocomplete="new-password"></label><label class="field"><span>Yeni şifre (tekrar)</span><input class="in" type="password" name="pw2" autocomplete="new-password"></label><div><button class="btn pri">Şifreyi değiştir</button></div><div class="muted small">Değiştirince diğer tüm cihazlardaki oturumlar kapanır.</div></div></form>
       <div class="card c6"><div class="hd"><h3>Veri yedeği</h3></div><div class="bd" style="display:grid;gap:10px"><p class="muted" style="margin:0">Tüm markalar, müşteriler, faturalar, giderler, ürünler ve otomatik giriş geçmişi tek JSON dosyası olarak indirilir. Şifre yedeğe dahil değildir.</p><div><a class="btn" href="/api/export/backup">${icon('download')} JSON yedeği indir</a></div></div></div></div>`;
+  if (tab === 'aktarim') {
+    let hist = await api('/import');
+    html += `<div class="rgrid"><div class="card c6"><div class="hd"><h3>Geçmiş satışları içe aktar</h3></div><div class="bd" style="display:grid;gap:12px">
+      <p class="muted" style="margin:0">Hazırlanmış aktarım dosyasını (.json) seçin. Satışlar parça parça yüklenir; aynı fatura iki kez girilmez, yarıda kalırsa tekrar yükleyebilirsiniz.</p>
+      <input type="file" accept=".json,application/json" id="impf" class="in">
+      <div id="impinfo" class="muted small"></div>
+      <div class="bar hidden" id="impbar" style="height:8px;border-radius:6px;background:var(--line);overflow:hidden"><i style="display:block;height:100%;width:0;background:var(--accent);transition:width .2s"></i></div>
+      <div><button class="btn pri" id="impgo" disabled>Aktarımı başlat</button></div></div></div>
+      <div class="card c6"><div class="hd"><h3>Yapılan aktarımlar</h3></div><div class="bd" style="display:grid;gap:8px">${(hist = hist.filter(h => h.n > 0 || h.status === 'reverted')).length ? hist.map(h => `<div class="row"><div class="grow"><b>${esc(h.label)}</b><div class="muted small">${esc(String(h.created_at || '').slice(0, 10))} · ${int(h.n)} satış${h.status === 'reverted' ? ' · geri alındı' : ''}</div></div>${h.n ? `<button class="btn sm" data-undo="${h.id}">Geri al</button>` : ''}</div>`).join('') : '<div class="muted">Henüz aktarım yok.</div>'}</div></div></div>`;
+  }
   el.innerHTML = html;
+  if (tab === 'aktarim') {
+    let data = null;
+    $('#impf', el).onchange = async e => {
+      const f = e.target.files[0]; if (!f) return;
+      try { data = JSON.parse(await f.text()); } catch { data = null; }
+      if (!data || data.kind !== 'paramotor-import' || !Array.isArray(data.invoices)) { $('#impinfo', el).textContent = 'Bu dosya tanınmadı.'; $('#impgo', el).disabled = true; return; }
+      const by = {}; for (const i of data.invoices) by[i.brand] = (by[i.brand] || 0) + 1;
+      $('#impinfo', el).innerHTML = `<b>${esc(data.label || '')}</b><br>${int(data.invoices.length)} satış · ${Object.entries(by).map(([k, n]) => `${esc((brandById(k) || {}).name || k)}: ${int(n)}`).join(' · ')}`;
+      $('#impgo', el).disabled = false;
+    };
+    $('#impgo', el).onclick = async () => {
+      const btn = $('#impgo', el); btn.disabled = true; const bar = $('#impbar', el); bar.classList.remove('hidden');
+      let batch = null, added = 0, skipped = 0; const N = 40, all = data.invoices;
+      try {
+        for (let i = 0; i < all.length; i += N) {
+          const r = await api.post('/import/invoices', { batch_id: batch, label: data.label, sale_date: data.sale_date, total: all.length, invoices: all.slice(i, i + N) });
+          batch = r.batch_id; added += r.added; skipped += r.skipped;
+          bar.firstElementChild.style.width = Math.round(Math.min(all.length, i + N) / all.length * 100) + '%';
+          btn.textContent = `Yükleniyor… ${Math.min(all.length, i + N)} / ${all.length}`;
+        }
+        toast(`${int(added)} satış aktarıldı${skipped ? `, ${int(skipped)} zaten vardı` : ''}`); settingsPage(ctx);
+      } catch (e) { toast('Aktarım yarıda kaldı: ' + (e.message || e) + '. Dosyayı tekrar yükleyip devam edebilirsiniz.', true); btn.disabled = false; btn.textContent = 'Devam et'; }
+    };
+    $$('[data-undo]', el).forEach(b => b.onclick = async () => { if (!(await confirmBox('Bu aktarımla girilen tüm satışlar silinsin mi?'))) return; const r = await api.del('/import/' + b.dataset.undo); toast(`${int(r.deleted)} satış silindi`); settingsPage(ctx); });
+  }
 
   $$('form[data-b]', el).forEach(f => {
     let logo = null;

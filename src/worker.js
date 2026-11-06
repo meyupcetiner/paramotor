@@ -569,7 +569,7 @@ async function api(req, env, url) {
     invs.sort((a, b) => (b.date + String(b.id).padStart(9, '0')).localeCompare(a.date + String(a.id).padStart(9, '0')));
     const summary = { count: invs.length, subtotal: r2(invs.reduce((a, i) => a + i.subtotal, 0)), vat: r2(invs.reduce((a, i) => a + i.vat_total, 0)), total: r2(invs.reduce((a, i) => a + i.total, 0)) };
     const page = Math.max(1, Number(q.get('page') || 1)), per = Math.min(500, Number(q.get('per') || 25));
-    return json({ summary, page, per, invoices: invs.slice((page - 1) * per, page * per).map(i => ({ ...i, lines: i.lines.map(l => ({ description: l.description, qty: l.qty, band_length_mm: l.band_length_mm, band_meters: l.band_meters, pname: l.pname, mfr: l.mfr, category: l.category, subcategory: l.subcategory, is_band: l.is_band, vwidth: l.vwidth, vthick: l.vthick, vdia: l.vdia, vteeth: l.vteeth })) })) });
+    return json({ summary, page, per, invoices: invs.slice((page - 1) * per, page * per).map(i => ({ ...i, lines: i.lines.map(l => ({ description: l.description, qty: l.qty, unit: l.unit, band_length_mm: l.band_length_mm, band_meters: l.band_meters, pname: l.pname, mfr: l.mfr, category: l.category, subcategory: l.subcategory, is_band: l.is_band, vwidth: l.vwidth, vthick: l.vthick, vdia: l.vdia, vteeth: l.vteeth })) })) });
   }
   if (p === '/invoices' && m === 'POST') {
     const b = await body(req); if (!b.brand) return err('Marka gerekli.');
@@ -733,6 +733,52 @@ async function api(req, env, url) {
     }
     return json({ ...cur, prev, from, to, vat });
   }
+
+  // --- dış veri aktarımı (ör. Paraşüt geçmişi): hazırlanmış JSON parça parça gönderilir ---
+  if (p === '/import/invoices' && m === 'POST') {
+    const b = await body(req);
+    const valid = new Set(BRANDS.map(x => x.id));
+    let batch = Number(b.batch_id) || null;
+    if (!batch) {
+      const r = await run(env, 'INSERT INTO auto_batches (brand_id,sale_date,input_text,engine,stats,status,created_at) VALUES (?,?,?,?,?,?,?)', 'all', b.sale_date || null, String(b.label || 'Veri aktarımı').slice(0, 500), 'import', JSON.stringify({ total: b.total || null }), 'committed', nowISO());
+      batch = r.meta.last_row_id;
+    }
+    let added = 0, skipped = 0;
+    for (const iv of b.invoices || []) {
+      if (!valid.has(iv.brand) || !iv.date) { skipped++; continue; }
+      if (iv.invoice_no && await first(env, 'SELECT id FROM invoices WHERE brand_id=? AND invoice_no=? AND date=?', iv.brand, iv.invoice_no, iv.date)) { skipped++; continue; }
+      const np = normalizePhone(iv.phone || ''); const phone = np.ok ? np.phone : null;
+      let cid = null;
+      if (iv.name || phone) {
+        const row = phone ? await first(env, 'SELECT id FROM customers WHERE brand_id=? AND phone=?', iv.brand, phone)
+          : await first(env, 'SELECT id FROM customers WHERE brand_id=? AND phone IS NULL AND name=?', iv.brand, iv.name);
+        if (row) cid = row.id;
+        else cid = (await run(env, 'INSERT INTO customers (brand_id,name,phone,address,il,ilce,is_official,tax_no,official_title,tax_office,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+          iv.brand, iv.name || null, phone, iv.address || null, iv.il || null, iv.ilce || null, iv.is_official ? 1 : 0, iv.tax_no || null, iv.is_official ? iv.name || null : null, iv.tax_office || null, nowISO())).meta.last_row_id;
+      }
+      const lines = (iv.lines || []).map((l, i) => ({ ...l, sort: i, qty: Number(l.qty) || 1, line_net: r2(Number(l.line_net) || 0) }));
+      const total = r2(lines.reduce((a, l) => a + l.line_net, 0));
+      const off = iv.is_official ? 1 : 0;
+      const id = (await run(env, `INSERT INTO invoices (brand_id,seq,invoice_no,title,customer_id,date,source_id,payment_id,rep_id,is_official,cust_name,cust_phone,cust_address,cust_il,cust_ilce,tax_no,official_title,tax_office,order_info,note,prices_incl_vat,subtotal,vat_total,total,auto_batch_id,created_at,updated_at) VALUES (?,NULL,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?,0,?,?,?,?)`,
+        iv.brand, iv.invoice_no || null, iv.name || null, cid, iv.date, iv.source_id || null, iv.payment_id || null, iv.rep_id || null, off, iv.name || null, phone, iv.address || null, iv.il || null, iv.ilce || null,
+        off ? iv.tax_no || null : null, off ? iv.name || null : null, off ? iv.tax_office || null : null, iv.order_info || null, iv.note || null, total, total, batch, nowISO(), nowISO())).meta.last_row_id;
+      if (lines.length) await env.DB.batch(lines.map(l => env.DB.prepare('INSERT INTO invoice_lines (invoice_id,sort,product_id,variant_id,description,qty,unit,unit_price,vat_rate,band_length_mm,band_meters,line_net,line_vat) VALUES (?,?,?,?,?,?,?,?,0,NULL,?,?,0)')
+        .bind(id, l.sort, l.product_id || null, l.variant_id || null, l.description || '', l.qty, l.unit || 'Adet', r2(l.line_net / l.qty), l.band_meters || null, l.line_net)));
+      added++;
+    }
+    return json({ ok: true, batch_id: batch, added, skipped });
+  }
+  if (p.startsWith('/import/') && m === 'DELETE') {
+    const id = Number(p.split('/')[2]);
+    const bt = await first(env, "SELECT id FROM auto_batches WHERE id=? AND engine='import'", id);
+    if (!bt) return err('Aktarım bulunamadı.', 404);
+    await run(env, 'DELETE FROM invoice_lines WHERE invoice_id IN (SELECT id FROM invoices WHERE auto_batch_id=?)', id);
+    const r = await run(env, 'DELETE FROM invoices WHERE auto_batch_id=?', id);
+    await run(env, 'DELETE FROM customers WHERE created_at >= (SELECT created_at FROM auto_batches WHERE id=?) AND id NOT IN (SELECT customer_id FROM invoices WHERE customer_id IS NOT NULL)', id);
+    await run(env, "UPDATE auto_batches SET status='reverted' WHERE id=?", id);
+    return json({ ok: true, deleted: r.meta.changes });
+  }
+  if (p === '/import' && m === 'GET') return json(await all(env, "SELECT b.id, b.input_text label, b.status, b.created_at, (SELECT COUNT(*) FROM invoices i WHERE i.auto_batch_id=b.id) n FROM auto_batches b WHERE engine='import' ORDER BY id DESC"));
 
   // --- yedek ---
   if (p === '/export/backup') {

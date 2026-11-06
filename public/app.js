@@ -20,9 +20,9 @@ function playIntro() {
     let finished = false;
     const done = () => { if (finished) return; finished = true; ss('pm_intro_seen', '1'); el.classList.add('done'); setTimeout(() => { el.classList.add('hidden'); }, 420); res(); };
     el.querySelector('.skip').onclick = done;
-    const img = new Image(); img.src = '/img/testeresan.png';
-    const start = () => { requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('go'))); setTimeout(done, 2000); };
-    img.complete ? setTimeout(start, 350) : (img.onload = () => setTimeout(start, 350), img.onerror = start);
+    const imgs = ['/img/intro-blade.svg', '/img/intro-badge.png'].map(u => new Promise(r => { const i = new Image(); i.onload = i.onerror = r; i.src = u; }));
+    const start = () => { requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('go'))); setTimeout(done, 2450); };
+    Promise.race([Promise.all(imgs), new Promise(r => setTimeout(r, 1500))]).then(() => setTimeout(start, 150));
   });
 }
 

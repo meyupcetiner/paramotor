@@ -42,19 +42,24 @@ img { max-width: 100%; }
 .label { text-transform: uppercase; letter-spacing: .05em; font-weight: 600; font-size: 11.5px; color: var(--muted); }
 
 /* ---------- Giriş animasyonu ---------- */
-#intro { position: fixed; inset: 0; background: #fff; display: grid; place-items: center; z-index: 100; transition: background .5s ease .9s, opacity .4s ease; }
-#intro .stage { position: relative; width: min(70vw, 520px); aspect-ratio: 700/438; }
-#intro .half { position: absolute; inset: 0; background: url(/img/testeresan.png) center/contain no-repeat; transition: transform 1.05s cubic-bezier(.7, 0, .2, 1) .45s, opacity .5s ease 1.2s; }
-#intro .half.l { clip-path: inset(0 50% 0 0); }
-#intro .half.r { clip-path: inset(0 0 0 50%); }
-#intro .cut { position: absolute; left: 50%; top: -6%; bottom: -6%; width: 2px; background: var(--brand); transform: scaleY(0); transform-origin: top; transition: transform .38s ease, opacity .3s ease .5s; box-shadow: 0 0 14px var(--brand); }
-#intro.go .cut { transform: scaleY(1); opacity: 0; }
-#intro.go .half.l { transform: translateX(-62vw); opacity: 0; }
-#intro.go .half.r { transform: translateX(62vw); opacity: 0; }
-#intro.go { background: var(--bg); }
+#intro { position: fixed; inset: 0; background: #fff; display: grid; place-items: center; z-index: 100; transition: opacity .45s ease; }
+#intro .stage { position: relative; width: min(72vw, 540px); aspect-ratio: 700/438; }
+#intro .blade { position: absolute; left: 20.07%; top: 2.17%; width: 60%; height: 95.89%; opacity: 0; transform: scale(.55) rotate(-300deg); will-change: transform, opacity; }
+#intro .badge { position: absolute; left: 1.4286%; top: 35.845%; width: 97.143%; height: 28.539%; clip-path: inset(0 50% 0 50% round 999px); will-change: clip-path, transform; filter: drop-shadow(0 6px 14px rgba(20, 40, 90, .18)); }
+#intro .badge img { display: block; width: 100%; height: 100%; }
+#intro .shine { position: absolute; inset: 0; background: linear-gradient(100deg, transparent 42%, rgba(255, 255, 255, .38) 50%, transparent 58%) no-repeat; background-size: 220% 100%; background-position: 160% 0; -webkit-mask: url(/img/intro-badge.png) center/100% 100% no-repeat; mask: url(/img/intro-badge.png) center/100% 100% no-repeat; }
+#intro.go .blade { animation: pm-blade 1.15s cubic-bezier(.16, .84, .3, 1) forwards, pm-idle 2.4s linear 1.15s infinite; }
+#intro.go .badge { animation: pm-badge .7s cubic-bezier(.65, 0, .25, 1) .5s forwards; }
+#intro.go .shine { animation: pm-shine .75s ease-in-out 1.15s forwards; }
+#intro.go .stage { animation: pm-out .5s cubic-bezier(.5, 0, .75, 0) 1.95s forwards; }
 #intro.done { opacity: 0; pointer-events: none; }
+@keyframes pm-blade { 0% { opacity: 0; transform: scale(.55) rotate(-300deg); } 35% { opacity: 1; } 100% { opacity: 1; transform: scale(1) rotate(0deg); } }
+@keyframes pm-idle { to { transform: scale(1) rotate(30deg); } }
+@keyframes pm-badge { 0% { clip-path: inset(0 50% 0 50% round 999px); transform: scaleY(.82); } 60% { transform: scaleY(1.03); } 100% { clip-path: inset(0 0 0 0 round 999px); transform: scaleY(1); } }
+@keyframes pm-shine { from { background-position: 160% 0; } to { background-position: -60% 0; } }
+@keyframes pm-out { to { transform: scale(1.06); opacity: 0; filter: blur(2px); } }
 #intro .skip { position: absolute; right: 22px; bottom: 22px; border: 1px solid #ddd; background: #fff; color: #444; border-radius: var(--radius-pill); padding: 7px 16px; cursor: pointer; font-size: 13px; }
-@media (prefers-reduced-motion: reduce) { #intro .half, #intro .cut { transition-duration: .01s; } }
+@media (prefers-reduced-motion: reduce) { #intro .blade, #intro .badge, #intro .shine, #intro .stage { animation-duration: .01s !important; animation-delay: 0s !important; animation-iteration-count: 1 !important; } }
 
 /* ---------- Giriş / şifre ---------- */
 .auth { min-height: 100vh; display: grid; place-items: center; padding: 24px; background: radial-gradient(1200px 500px at 50% -10%, rgba(48, 25, 229, .16), transparent 60%), var(--bg); }

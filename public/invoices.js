@@ -108,6 +108,7 @@ export async function invoiceForm(ctx, id) {
       </div><div></div></div>
       <div class="frow ${inv.invoice_no ? '' : 'hidden'}" id="norow"><div class="ic">${icon('tag')}</div><div class="label">Fatura No</div><div><input class="in" name="invoice_no" value="${esc(inv.invoice_no || '')}" placeholder="Boşsa otomatik verilir (${esc((brandById(brand) || {}).invoice_prefix || '')}-YYYY-0001)"></div><div></div></div>
       <div class="frow ${inv.order_info ? '' : 'hidden'}" id="ordrow"><div class="ic">${icon('box')}</div><div class="label">Sipariş Bilgisi</div><div><input class="in" name="order_info" value="${esc(inv.order_info || '')}" placeholder="Sipariş no, kargo takip vb."></div><div></div></div>
+      ${inv.raw_msg ? `<div class="frow"><div class="ic">${icon('spark')}</div><div class="label">WhatsApp Mesajı</div><div><details class="rawbox"><summary>Yapıştırılan mesajı göster</summary><pre>${esc(inv.raw_msg)}</pre></details></div><div></div></div>` : ''}
       <div class="frow"><div class="ic">${icon('pen')}</div><div class="label">Fatura Notu</div><div><textarea class="in" name="note" rows="3">${esc(inv.note || '')}</textarea></div><div></div></div>
     </div>
     <aside class="sidebox">

@@ -46,6 +46,7 @@ async function ensureDB(env) {
   await env.DB.exec("CREATE TABLE IF NOT EXISTS sales_reps (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, aliases TEXT, color TEXT, sort INTEGER DEFAULT 0, active INTEGER DEFAULT 1);");
   const cols = await all(env, "PRAGMA table_info(invoices)");
   if (!cols.some(c => c.name === 'rep_id')) await env.DB.exec('ALTER TABLE invoices ADD COLUMN rep_id INTEGER;');
+  if (!cols.some(c => c.name === 'raw_msg')) await env.DB.exec('ALTER TABLE invoices ADD COLUMN raw_msg TEXT;');
   if (!cols.some(c => c.name === 'is_promo')) await env.DB.exec('ALTER TABLE invoices ADD COLUMN is_promo INTEGER DEFAULT 0;');
   // v2 göçü: KDV'siz varsayılan, yeni ödeme yöntemleri, temsilciler, hizmet ürünleri
   const mg = await first(env, "SELECT value FROM settings WHERE key='migr_v2'");
@@ -151,6 +152,38 @@ async function ensureDB(env) {
       }
     }
     await run(env, "INSERT INTO settings (key,value) VALUES ('migr_v10','1') ON CONFLICT(key) DO NOTHING");
+  }
+  if (!(await first(env, "SELECT value FROM settings WHERE key='migr_v11'"))) {
+    // 1) otomatik girilen siparişlere yapıştırılan WhatsApp mesajını geriye dönük bağla
+    const bs = await all(env, "SELECT id, final_result, raw_result FROM auto_batches WHERE engine<>'import'");
+    for (const b of bs) {
+      let os = []; try { os = JSON.parse(b.final_result || b.raw_result || '[]'); } catch { }
+      const invs = await all(env, 'SELECT id, cust_phone, cust_name FROM invoices WHERE auto_batch_id=? AND raw_msg IS NULL', b.id);
+      for (const iv of invs) {
+        const o = os.find(o => o.raw_text && ((iv.cust_phone && normalizePhone(o.phone).phone === iv.cust_phone) || (iv.cust_name && custBase(o.customer_name) === custBase(iv.cust_name))));
+        if (o) await run(env, 'UPDATE invoices SET raw_msg=? WHERE id=?', o.raw_text, iv.id);
+      }
+    }
+    // 2) Kronberg Metal Dry Cut 305x72 (normal) varyantı
+    const metal = await first(env, "SELECT id FROM products WHERE name='Kronberg Metal Dry Cut'");
+    const pas = await first(env, "SELECT id FROM products WHERE name='Kronberg Paslanmaz Dry Cut'");
+    if (metal) {
+      let v = await first(env, 'SELECT id FROM variants WHERE product_id=? AND diameter=305 AND teeth=72', metal.id);
+      if (!v) v = { id: (await run(env, "INSERT INTO variants (product_id,label,diameter,thickness,bore,teeth,sort) VALUES (?,'Ø305 × 2,2 × 25,4 · Z72',305,2.2,'25.4',72,6)", metal.id)).meta.last_row_id };
+      // 3) paslanmaz/inox yazmayan 305x72'ler normal Dry Cut'a geçer (eski kayıtlar dahil)
+      if (pas) {
+        const pv = await first(env, 'SELECT id FROM variants WHERE product_id=? AND diameter=305 AND teeth=72', pas.id);
+        if (pv) {
+          const ls = await all(env, 'SELECT l.id, l.description, i.raw_msg FROM invoice_lines l JOIN invoices i ON i.id=l.invoice_id WHERE l.variant_id=?', pv.id);
+          for (const l of ls) {
+            const src = /^Kronberg Paslanmaz Drycut/.test(l.description || '') ? String(l.raw_msg || '').split('\n').filter(x => /305/.test(x) && /72/.test(x)).join(' ') : (l.description || '');
+            if (/paslanmaz|inox|stainless/i.test(fold(src))) continue;
+            await run(env, 'UPDATE invoice_lines SET product_id=?, variant_id=?, description=CASE WHEN description LIKE ? THEN ? ELSE description END WHERE id=?', metal.id, v.id, 'Kronberg Paslanmaz Drycut%', 'Kronberg Drycut 305x72', l.id);
+          }
+        }
+      }
+    }
+    await run(env, "INSERT INTO settings (key,value) VALUES ('migr_v11','1') ON CONFLICT(key) DO NOTHING");
   }
   { const pays = await all(env, 'SELECT name FROM payment_methods'); let k = pays.length; for (const [n, c] of PAYMENTS) if (!pays.some(x => x.name === n)) await run(env, 'INSERT INTO payment_methods (name,color,sort) VALUES (?,?,?)', n, c, k++); }
   await normalizeServices(env);
@@ -313,6 +346,7 @@ async function saveInvoice(env, brand, body, id = null, settings = null) {
       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, brand, seq, no, ...common, body.auto_batch_id || null, nowISO(), nowISO());
     id = r.meta.last_row_id;
   }
+  if (body.raw_msg !== undefined) await run(env, 'UPDATE invoices SET raw_msg=? WHERE id=?', body.raw_msg || null, id);
   await run(env, 'UPDATE invoices SET is_promo=? WHERE id=?', /#(reklam|bedelsiz|numune|hediye)/i.test(body.note || '') && !(calc.total > 0) ? 1 : 0, id); // sadece bedelsiz (0 ₺) gönderim raporlardan ayrılır
   const stmts = calc.lines.map(l => env.DB.prepare('INSERT INTO invoice_lines (invoice_id,sort,product_id,variant_id,description,qty,unit,unit_price,vat_rate,band_length_mm,band_meters,line_net,line_vat) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)')
     .bind(id, l.sort, l.product_id, l.variant_id, l.description, l.qty, l.unit, l.unit_price, l.vat_rate, l.band_length_mm, l.band_meters, l.line_net, l.line_vat));
@@ -814,7 +848,7 @@ async function api(req, env, url) {
     const batch = b.batch_id ? await first(env, 'SELECT * FROM auto_batches WHERE id=?', b.batch_id) : null;
     const ids = [];
     for (const o of b.orders || []) {
-      const inv = { brand: b.brand, date: o.date || b.date, auto_batch_id: b.batch_id || null, source_id: o.source_id || null, payment_id: o.payment_id || null, rep_id: o.rep_id || null, is_official: o.is_official ? 1 : 0, is_promo: o.is_promo ? 1 : 0, tax_no: o.tax_no, tax_office: o.tax_office, official_title: o.official_title, person_type: o.is_official ? 'tuzel' : null, prices_incl_vat: o.vat_mode === 'excl' ? 0 : (o.is_official || o.vat_mode === 'incl') ? 1 : 0, note: o.note || null, title: o.customer_name || null,
+      const inv = { brand: b.brand, date: o.date || b.date, auto_batch_id: b.batch_id || null, source_id: o.source_id || null, payment_id: o.payment_id || null, rep_id: o.rep_id || null, is_official: o.is_official ? 1 : 0, is_promo: o.is_promo ? 1 : 0, raw_msg: o.raw_text || null, tax_no: o.tax_no, tax_office: o.tax_office, official_title: o.official_title, person_type: o.is_official ? 'tuzel' : null, prices_incl_vat: o.vat_mode === 'excl' ? 0 : (o.is_official || o.vat_mode === 'incl') ? 1 : 0, note: o.note || null, title: o.customer_name || null,
         customer: { name: o.customer_name, phone: o.phone, address: o.address, il: o.il, ilce: o.ilce },
         lines: (o.items || []).map(it => ({ product_id: it.product_id, variant_id: it.variant_id, description: it.description, qty: it.qty, unit_price: it.unit_price, vat_rate: (o.is_official || o.vat_mode) ? 20 : 0, band_length_mm: it.is_band ? it.band_length_mm : null, unit: 'Adet' })) };
       ids.push(await saveInvoice(env, b.brand, inv, null, settings));

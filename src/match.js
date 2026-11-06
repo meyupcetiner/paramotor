@@ -80,7 +80,7 @@ function normTpi(s) { return String(s || '').replace(/\s/g, '').replace(/,/g, '.
 // catalog: [{id, product_id, label, diameter, thickness, bore, teeth, width, tpi, length, p: {name, mfr, category, subcategory, is_band}}]
 export function matchItem(item, catalog) {
   const raw = [item.raw_text, item.product_hint, item.brand_hint].filter(Boolean).join(' ');
-  const t = fold(raw).replace(/dry\s*-?\s*cut/g, 'dry cut').replace(/kuru\s*kesim/g, 'dry cut').replace(/martin\s*-?\s*mill?er/g, 'schuster sharper ahsap serit').replace(/golden\s*-?\s*line/g, 'goldenline').replace(/kurt\s*-?\s*dis/g, 'kurt dis');
+  const t = fold(raw).replace(/dry\s*-?\s*cut/g, 'dry cut').replace(/kuru\s*kesim/g, 'dry cut').replace(/martin\s*-?\s*mill?er/g, 'schuster sharper ahsap serit').replace(/golden\s*-?\s*line/g, 'goldenline').replace(/\b(inox|stainless)\b/g, 'paslanmaz').replace(/kurt\s*-?\s*dis/g, 'kurt dis');
   const dims = { ...extractDims(item.raw_text || ''), ...strip(item) };
   if (dims.width && dims.teeth != null && !dims.tpi && !dims.diameter) { dims.tpi = String(dims.teeth); delete dims.teeth; } // şeritte "14z" = 14 TPI
   let kind = item.kind && item.kind !== 'belirsiz' ? item.kind : null;
@@ -114,7 +114,8 @@ export function matchItem(item, catalog) {
     if (isBand && lines.some(l => SERIES.includes(l)) && SERIES.some(x => pname.includes(x)) && !lines.some(l => SERIES.includes(l) && pname.includes(l))) s -= 30; // mesajda seri yazıyorsa başka seri seçilmez
     for (const w of words) if (pname.includes(w)) s += 4; else if (/^(pro|vario|tin|tialn|white|antifric)$/.test(w)) s -= 0; 
     { const pn = fold(p.name).replace(/\s*\(.*?\)/g, '').trim(); if (pn.length >= 6 && t.includes(pn) && !v.diameter && !v.width) s += 40; } // ölçüsüz ürün adı birebir geçiyor (Bor Yağı vb.)
-    if (/kurt dis|oluklu/.test(pname) && !lines.some(l => pname.includes(l))) s -= 12; // özel seriler ancak adı geçince
+    if (/kurt dis|oluklu/.test(pname) && !lines.some(l => pname.includes(l))) s -= 12;
+    if (/paslanmaz/.test(pname) && !/paslanmaz|inox|paslanmaz|stainless/.test(t)) s -= 40; // paslanmaz/inox yazmıyorsa normal Dry Cut // özel seriler ancak adı geçince
     if (/goldenline/.test(t) && !/golden/.test(pname)) s -= 200; // Goldenline ayrı seri
     if (/golden/.test(pname) && !/goldenline/.test(t)) s -= 30;
     if (!words.includes('pro') && /\bpro\b/.test(pname)) s -= 3; if (!words.includes('vario') && /vario/.test(pname)) s -= 3;

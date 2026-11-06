@@ -557,3 +557,8 @@ td .avatar::after { display: none; }
   .bcard .meta .muted.small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .select-page .select-wrap { width: 100%; max-width: 340px; margin: auto; padding-bottom: 6vh; }
 }
+
+.rawbox summary { cursor: pointer; color: var(--muted); font-size: 13px; padding: 9px 12px; border: 1px dashed var(--line-2); border-radius: 10px; list-style: none; }
+.rawbox summary::-webkit-details-marker { display: none; }
+.rawbox[open] summary { color: var(--text); border-style: solid; border-color: var(--blue); margin-bottom: 8px; }
+.rawbox pre { margin: 0; white-space: pre-wrap; font: inherit; font-size: 13.5px; line-height: 1.5; background: var(--surface-2); border-radius: 10px; padding: 12px 14px; color: var(--text-2); max-height: 360px; overflow: auto; }

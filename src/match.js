@@ -42,7 +42,11 @@ export function extractDims(raw) {
   const m = t.match(/(\d+(?:[.,]\d+)?)\s*x\s*(\d+(?:[.,]\d+)?)(?:\s*x\s*(\d+(?:[.,]\d+)?))?(?:\s*x\s*(\d+(?:[.,]\d+)?))?/);
   if (m) {
     const v = m.slice(1).filter(Boolean).map(x => parseFloat(x.replace(',', '.')));
-    if (v[0] >= 500) { // şerit: boy x genişlik x kalınlık
+    if (v[0] >= 0.5 && v[0] < 15 && v[1] >= 6 && v[1] <= 67 && v[2] != null && v[2] < 2) { // şerit, boy metre: 3,66 x 27 x 0,90
+      d.length_mm = d.length_mm || Math.round(v[0] * 1000); d.width = v[1]; d.thickness = v[2];
+    } else if (v[0] >= 6 && v[0] <= 67 && v[1] && v[1] < 2 && v[2] >= 0.5 && v[2] < 15) { // genişlik x kalınlık x boy(m)
+      d.width = v[0]; d.thickness = v[1]; d.length_mm = d.length_mm || Math.round(v[2] * 1000);
+    } else if (v[0] >= 500) { // şerit: boy x genişlik x kalınlık
       d.length_mm = d.length_mm || v[0]; if (v[1]) d.width = v[1]; if (v[2]) d.thickness = v[2];
     } else if (v[0] >= 6 && v[0] <= 67 && v[1] && v[1] < 2 && v[2] >= 500) { // genişlik x kalınlık x boy
       d.width = v[0]; d.thickness = v[1]; d.length_mm = d.length_mm || v[2];

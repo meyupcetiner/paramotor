@@ -74,7 +74,7 @@ export async function invoiceForm(ctx, id) {
     const d = await api('/invoices/' + id);
     const incl = !!d.prices_incl_vat;
     inv = { ...d, customer: { customer_id: d.customer_id, name: d.cust_name || '', phone: d.cust_phone || '', address: d.cust_address || '', il: d.cust_il || '', ilce: d.cust_ilce || '' },
-      lines: d.lines.map(l => ({ product_id: l.product_id, variant_id: l.variant_id, description: l.description, qty: l.qty, unit: l.unit, vat_rate: l.vat_rate, unit_price: incl ? l.unit_price * (1 + l.vat_rate / 100) : l.unit_price, band_length_mm: l.band_length_mm, is_band: !!l.is_band || !!l.band_length_mm })) };
+      lines: d.lines.map(l => ({ product_id: l.product_id, variant_id: l.variant_id, description: l.description, qty: l.qty, unit: l.unit, vat_rate: l.vat_rate, unit_price: Math.round(l.unit_price * 10000) / 10000, band_length_mm: l.band_length_mm, is_band: !!l.is_band || !!l.band_length_mm })) };
     setTitle(`<span class="crumb"><a href="#/b/${brand}/faturalar">Satış Faturaları</a> › </span>${esc(d.invoice_no || 'Fatura')}`);
   } else {
     let pre = null; if (ctx.query.get('customer')) { try { pre = (await api('/customers/' + Number(ctx.query.get('customer')))).customer; } catch { } }
@@ -117,7 +117,7 @@ export async function invoiceForm(ctx, id) {
       ${id ? `<div><button type="button" class="btn danger sm" id="del">${icon('trash')} Faturayı sil</button></div>` : ''}
     </aside></div>
     <div class="lines"><table><thead><tr><th style="width:44%">Hizmet / Ürün</th><th>Miktar</th><th>Birim</th><th>Br. Fiyat</th><th>Vergi</th><th style="text-align:right">Toplam</th><th></th></tr></thead><tbody id="lb"></tbody></table>
-      <div class="row wrap" style="padding:10px 16px 4px"><button type="button" class="btn up sm" id="addl">+ Yeni Satır Ekle</button><span class="sp"></span><label class="chk small muted" title="Sadece KDV'li (resmi) satışlarda"><input type="checkbox" name="prices_incl_vat" ${inv.prices_incl_vat ? 'checked' : ''}> Fiyatlar KDV dahil</label></div>
+      <div class="row wrap" style="padding:10px 16px 4px"><button type="button" class="btn up sm" id="addl">+ Yeni Satır Ekle</button><span class="sp"></span><span class="muted small">Birim fiyat KDV hariç · Toplam = adet × fiyat + KDV (toplama KDV dahil tutar yazarsan birim fiyat hesaplanır)</span><input type="checkbox" name="prices_incl_vat" hidden></div>
       <div class="totals"><table><tr><td>Ara Toplam</td><td id="t1"></td></tr><tr id="t2r"><td>Toplam KDV</td><td id="t2"></td></tr><tr class="grand"><td>Genel Toplam</td><td id="t3"></td></tr></table></div>
     </div></form>`;
 
@@ -175,7 +175,7 @@ export async function invoiceForm(ctx, id) {
       <td><select class="in" data-k="unit" style="width:100px">${['Adet', 'Metre', 'Paket', 'Takım'].map(u => `<option ${l.unit === u ? 'selected' : ''}>${u}</option>`).join('')}</select></td>
       <td><input class="in" data-k="unit_price" inputmode="decimal" value="${esc(numIn(l.unit_price))}" placeholder="0,00" style="width:130px"></td>
       <td><select class="in" data-k="vat_rate" style="width:90px">${[20, 10, 1, 0].map(v => `<option value="${v}" ${Number(l.vat_rate) === v ? 'selected' : ''}>%${v}</option>`).join('')}</select></td>
-      <td style="text-align:right;white-space:nowrap" data-tot></td>
+      <td><input class="in lt" data-k="line_total" inputmode="decimal" style="width:130px;text-align:right;font-weight:700" title="KDV dahil satır toplamı"></td>
       <td><button type="button" class="btn sm icon" data-rm title="Satırı sil">${icon('x')}</button></td></tr>
       ${l.is_band ? `<tr class="band" data-i="${i}"><td colspan="7"><div class="bandbox">${icon('saw')} Şerit boyu <input class="in sm" data-k="band_len" inputmode="decimal" value="${esc(l.band_length_mm ? numIn(l._cm ? l.band_length_mm / 10 : l.band_length_mm) : '')}" placeholder="ör. 2240"><select class="in sm" data-k="band_unit" style="width:70px"><option value="mm" ${!l._cm ? 'selected' : ''}>mm</option><option value="cm" ${l._cm ? 'selected' : ''}>cm</option></select> × adet = <b data-m></b> <span>· kaynaklı, boyuna kesilmiş şerit</span></div></td></tr>` : ''}`).join('');
     $$('tr.line', lb).forEach(tr => {
@@ -187,7 +187,8 @@ export async function invoiceForm(ctx, id) {
       });
       inp.addEventListener('input', () => { l.description = inp.value; if (l.variant_id) { const v = variantById(l.variant_id); if (!v || v.text !== inp.value) { l.variant_id = null; l.product_id = null; } } });
       tr.querySelector('[data-rm]').onclick = () => { inv.lines.splice(i, 1); if (!inv.lines.length) inv.lines.push(blankLine()); drawLines(); };
-      for (const k of ['qty', 'unit_price']) tr.querySelector(`[data-k=${k}]`).oninput = e => { l[k] = parseNum(e.target.value); calc(); };
+      for (const k of ['qty', 'unit_price']) tr.querySelector(`[data-k=${k}]`).oninput = e => { l[k] = parseNum(e.target.value); calc(tr); };
+      tr.querySelector('[data-k=line_total]').oninput = e => { const t = parseNum(e.target.value), q = Number(l.qty) || 0, r = Number(l.vat_rate) || 0; if (t != null && q) { l.unit_price = Math.round(t / q / (1 + r / 100) * 10000) / 10000; tr.querySelector('[data-k=unit_price]').value = numIn(l.unit_price); } calc(tr.querySelector('[data-k=line_total]')); };
       tr.querySelector('[data-k=unit]').onchange = e => l.unit = e.target.value;
       tr.querySelector('[data-k=vat_rate]').onchange = e => { l.vat_rate = Number(e.target.value); calc(); };
     });
@@ -199,17 +200,16 @@ export async function invoiceForm(ctx, id) {
     });
     calc();
   };
-  const calc = () => {
-    const incl = f.prices_incl_vat.checked; let sub = 0, vat = 0;
+  const calc = (skip) => {
+    let sub = 0, vat = 0;
     inv.lines.forEach((l, i) => {
-      const q = Number(l.qty) || 0, r = Number(l.vat_rate) || 0; let p = Number(l.unit_price) || 0; if (incl) p = p / (1 + r / 100);
+      const q = Number(l.qty) || 0, r = Number(l.vat_rate) || 0, p = Number(l.unit_price) || 0;
       const net = q * p; sub += net; vat += net * r / 100;
-      const td = lb.querySelector(`tr.line[data-i="${i}"] [data-tot]`); if (td) td.innerHTML = moneyHtml(incl ? net * (1 + r / 100) : net);
+      const td = lb.querySelector(`tr.line[data-i="${i}"] [data-k=line_total]`); if (td && td !== skip) td.value = numIn(Math.round(net * (1 + r / 100) * 100) / 100);
       const m = lb.querySelector(`tr.band[data-i="${i}"] [data-m]`); if (m) m.textContent = l.band_length_mm ? `${String(Math.round(l.band_length_mm * q / 10) / 100).replace('.', ',')} m` : '— m';
     });
     $('#t1', el).innerHTML = moneyHtml(sub); $('#t2', el).innerHTML = moneyHtml(vat); $('#t2r', el).style.display = vat > 0 ? '' : 'none'; $('#t3', el).innerHTML = moneyHtml(sub + vat);
   };
-  f.prices_incl_vat.onchange = calc;
   $('#addl', el).onclick = () => { inv.lines.push(blankLine()); drawLines(); lb.querySelector(`tr.line[data-i="${inv.lines.length - 1}"] [data-k=description]`).focus(); };
   drawLines();
   // resmi satış: fiyatlar KDV dahil, sabit %20 (yazmaya gerek yok)
@@ -217,7 +217,7 @@ export async function invoiceForm(ctx, id) {
     const on = f.is_official.checked;
     $('#off', el).classList.toggle('hidden', !on); if (on && !f.official_title.value) f.official_title.value = f.name.value;
     for (const l of inv.lines) l.vat_rate = on ? 20 : Number(st.default_vat ?? 0) || 0;
-    f.prices_incl_vat.checked = on; drawLines(); calc();
+    drawLines(); calc();
   };
 
   if (id) $('#del', el).onclick = async () => { if (!(await confirmBox('Bu fatura kalıcı olarak silinsin mi?'))) return; await api.del('/invoices/' + id); toast('Fatura silindi'); location.hash = `#/b/${brand}/faturalar`; };
@@ -232,7 +232,7 @@ export async function invoiceForm(ctx, id) {
     if (bad && !(await confirmBox('Şerit satırında boy (mm) girilmemiş. Metraj raporuna yansımaz. Devam edilsin mi?'))) return;
     const payload = {
       brand, title: f.title.value.trim(), date: f.date.value, invoice_no: f.invoice_no.value.trim(), order_info: f.order_info.value.trim(), note: f.note.value.trim(),
-      source_id: inv.source_id, payment_id: inv.payment_id, rep_id: inv.rep_id, prices_incl_vat: f.prices_incl_vat.checked ? 1 : 0,
+      source_id: inv.source_id, payment_id: inv.payment_id, rep_id: inv.rep_id, prices_incl_vat: 0,
       is_official: f.is_official.checked ? 1 : 0, tax_no: f.tax_no.value.trim(), official_title: f.official_title.value.trim(), tax_office: f.tax_office.value.trim(), person_type: f.person_type.value,
       customer: { customer_id: inv.customer.customer_id || null, name, phone: phoneNorm(f.phone.value) || f.phone.value.trim(), address: f.address.value.trim(), il: f.il.value.trim(), ilce: f.ilce.value.trim() },
       lines: lines.map(l => ({ product_id: l.product_id, variant_id: l.variant_id, description: l.description, qty: Number(l.qty) || 0, unit: l.unit, unit_price: Number(l.unit_price) || 0, vat_rate: l.vat_rate, band_length_mm: l.is_band ? l.band_length_mm : null }))

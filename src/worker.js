@@ -272,7 +272,7 @@ async function saveInvoice(env, brand, body, id = null, settings = null) {
       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, brand, seq, no, ...common, body.auto_batch_id || null, nowISO(), nowISO());
     id = r.meta.last_row_id;
   }
-  await run(env, 'UPDATE invoices SET is_promo=? WHERE id=?', /#(reklam|bedelsiz|numune|hediye)/i.test(body.note || '') ? 1 : 0, id);
+  await run(env, 'UPDATE invoices SET is_promo=? WHERE id=?', /#(reklam|bedelsiz|numune|hediye)/i.test(body.note || '') && !(calc.total > 0) ? 1 : 0, id); // sadece bedelsiz (0 ₺) gönderim raporlardan ayrılır
   const stmts = calc.lines.map(l => env.DB.prepare('INSERT INTO invoice_lines (invoice_id,sort,product_id,variant_id,description,qty,unit,unit_price,vat_rate,band_length_mm,band_meters,line_net,line_vat) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)')
     .bind(id, l.sort, l.product_id, l.variant_id, l.description, l.qty, l.unit, l.unit_price, l.vat_rate, l.band_length_mm, l.band_meters, l.line_net, l.line_vat));
   if (stmts.length) await env.DB.batch(stmts);

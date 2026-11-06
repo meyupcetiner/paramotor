@@ -455,12 +455,12 @@ function parseWA(m, idx, sources, payments, reps = []) {
   if (o.payment === 'Belirsiz' && !o.anonymous && !o.store && !/kap[ıi]da/i.test(m.text) && payments.includes('Havale')) o.payment = 'Havale';
   o.promo = !o.exchange && PROMO_RE.test(m.text.replace(/reklam\s*(ajans|ofis)\w*/ig, ''));
   if (o.payment === 'Belirsiz' && !o.anonymous && !o.store) o.uncertain_fields.push('payment');
-  if (o.promo) { o.payment = 'Belirsiz'; o.uncertain_fields = o.uncertain_fields.filter(x => x !== 'payment'); }
+  if (o.promo && !(o.order_total > 0) && !o.items.some(it => it.line_total > 0)) { o.payment = 'Belirsiz'; o.uncertain_fields = o.uncertain_fields.filter(x => x !== 'payment'); } // fiyatsız reklam/bedelsiz gönderim: ödeme sorulmaz
   if (!o.items.length) o.uncertain_fields.push('items');
   if (!o.date) o.uncertain_fields.push('date');
   // fiyatlar: tek ürün + toplam → satır toplamı; çok ürün → satır fiyatları, eksik tek satırı toplamdan tamamla
   if (o.exchange) { for (const it of o.items) { it.line_total = 0; } notes.unshift('DEĞİŞİM / TEKRAR GÖNDERİM — satış değil'); }
-  if (o.promo) { for (const it of o.items) { it.line_total = 0; it.uncertain = (it.uncertain || []).filter(u => !/price/.test(u)); } o.order_total = 0; }
+  if (o.promo && o.order_total == null && !o.items.some(it => it.line_total != null)) { for (const it of o.items) { it.line_total = 0; it.uncertain = (it.uncertain || []).filter(u => !/price/.test(u)); } } // fiyat yazılmamışsa bedelsiz; fiyat varsa aynen alınır
   const priced = o.items.filter(it => it.line_total != null);
   if (o.items.length === 1 && o.items[0].line_total == null && o.order_total != null) o.items[0].line_total = o.order_total;
   else if (o.items.length > 1 && o.order_total != null) {
@@ -486,7 +486,7 @@ function parseWA(m, idx, sources, payments, reps = []) {
   if (o.promo) { if (/reklam/i.test(m.text)) tags.push('#reklam'); if (/bedelsiz|[uü]cretsiz|hediye/i.test(m.text)) tags.push('#bedelsiz'); if (/numune/i.test(m.text)) tags.push('#numune'); if (!tags.length) tags.push('#bedelsiz'); }
   if (o.items.some(it => it.service && /bileme|bilet|di[şs]\s*a[çc]|tamir|torna/i.test(it.raw_text || ''))) tags.push('#bileme');
   if (o.items.some(it => it.service && /kaynak|kaynat|kopan/i.test(it.raw_text || ''))) tags.push('#kaynak');
-  const rest2 = [...new Set(notes.map(x => x.trim()).filter(Boolean))].filter(x => !/^(reklam|bedelsiz|hediye|ucretsiz|numune)(\s*(icin|olarak|gonderim\w*))?$/.test(fold(x).replace(/[^a-z ]/g, '').trim()) && !/^Çıkma \(ikinci el\)/.test(x));
+  const rest2 = [...new Set(notes.map(x => x.trim()).filter(Boolean))].filter(x => !/^((reklam|bedelsiz|hediye|ucretsiz|numune|icin|olarak|gonderim\w*)\s*)+$/.test(fold(x).replace(/[^a-z ]/g, '').trim()) && !/^Çıkma \(ikinci el\)/.test(x));
   o.note = [tags.join(' '), rest2.join(' · ')].filter(Boolean).join(' · ');
   return o;
 }

@@ -1,7 +1,7 @@
 // ZEPLİN — Cloudflare Worker (API + statik dosyalar). Veri: D1 (binding: DB). Görseller (opsiyonel): R2 (binding: UPLOADS).
 import { SCHEMA } from './schema.js';
 import { expandCatalog, CATEGORIES } from './catalog.js';
-import { matchItem, fold } from './match.js';
+import { matchItem, fold, extractDims } from './match.js';
 import { shortName } from '../public/short.js';
 import { parseText, normalizePhone, canonIlIlce } from './parser.js';
 import { extractWithClaude } from './claude.js';
@@ -211,6 +211,23 @@ async function normalizeServices(env) {
   ]);
   for (const [pid, tag] of [[bil.id, '#bileme'], [kay.id, '#kaynak']])
     await run(env, `UPDATE invoices SET note = TRIM(COALESCE(note,'') || ' ' || ?) WHERE id IN (SELECT invoice_id FROM invoice_lines WHERE product_id=?) AND COALESCE(note,'') NOT LIKE ?`, tag, pid, '%' + tag + '%');
+}
+
+// Şerit satırı: tür (Bimetal Şerit, Karbon Şerit…), metre, adet ve model anahtarı. Ürüne bağlı olmayan (Paraşüt'ten gelen) satırlar açıklamadan okunur.
+const BAND_TYPE = { Bimetal: 'Bimetal Şerit', Karbon: 'Karbon Şerit', Ahşap: 'Ahşap Şeridi', 'Et-Kemik': 'Et Şeridi', Carbide: 'Carbide Şerit', 'Kağıt-Sünger': 'Sünger Şeridi' };
+function bandInfo(l) {
+  const d = String(l.description || ''), f = fold(d);
+  const looksBand = /serit|bimetal|karbon|dekupaj|flexback|multicut|durocut|probeam|powercut|signier|performer|steelmaster|woodmaster|slender|sharper|bonemaster|martin|m42|m51/.test(f) && !/kaynak|bileme|makine|yag/.test(f);
+  if (!l.is_band && (l.product_id || !looksBand)) return null;
+  const dims = extractDims(d);
+  let type = l.is_band ? (BAND_TYPE[l.subcategory] || 'Diğer şerit') : /bimetal|dekupaj|m42|m51|multicut|durocut|probeam|signier|performer|steelmaster/.test(f) ? 'Bimetal Şerit' : /karbon|flexback|woodmaster|slender/.test(f) ? 'Karbon Şerit' : /ahsap|sharper|martin/.test(f) ? 'Ahşap Şeridi' : /\bet\b|kemik|bonemaster/.test(f) ? 'Et Şeridi' : /carbide|powercut/.test(f) ? 'Carbide Şerit' : 'Diğer şerit';
+  const q = Number(l.qty) || 0, metre = l.unit === 'Metre';
+  const len = l.band_length_mm || dims.length_mm || null;
+  const meters = l.band_meters || (metre ? q : (len ? len * q / 1000 : 0));
+  const pieces = metre ? 0 : q;
+  const width = l.vwidth || dims.width || null, thick = l.vthick || dims.thickness || null;
+  const key = l.is_band && l.pname ? shortName({ name: l.pname, mfr: l.mfr, category: l.category, subcategory: l.subcategory, is_band: 1 }, { width, thickness: thick }) : `${type}${width ? ` ${width}x${thick || ''}`.replace(/x$/, '') : ''}`;
+  return { type, meters, pieces, width, thick, key };
 }
 
 async function seed(env) {
@@ -473,7 +490,7 @@ function filterCustomers(list, q) {
 function salesReport(invs, { vat, brands, srcMap, payMap, repMap = {}, roll }) {
   const amt = i => vat === 'excl' ? i.subtotal : i.total;
   const lamt = l => vat === 'excl' ? l.line_net : (l.line_net + l.line_vat);
-  const R = { total: 0, orders: invs.length, customers: 0, newCust: { orders: 0, total: 0 }, retCust: { orders: 0, total: 0 }, official: { orders: 0, total: 0 }, informal: { orders: 0, total: 0 }, bySource: {}, byPayment: {}, byRep: {}, anon: { orders: 0, total: 0 }, cross: {}, byIl: {}, byIlce: {}, byProduct: {}, byCategory: {}, bands: { meters: 0, pieces: 0, byType: {}, byWidth: {}, rolls: 0 }, daily: {}, weekday: [0, 0, 0, 0, 0, 0, 0], monthday: Array(31).fill(0), byBrand: {}, topCustomers: {} };
+  const R = { total: 0, orders: invs.length, customers: 0, newCust: { orders: 0, total: 0 }, retCust: { orders: 0, total: 0 }, official: { orders: 0, total: 0 }, informal: { orders: 0, total: 0 }, bySource: {}, byPayment: {}, byRep: {}, anon: { orders: 0, total: 0 }, cross: {}, byIl: {}, byIlce: {}, byProduct: {}, byCategory: {}, bands: { top: {}, meters: 0, pieces: 0, byType: {}, byWidth: {}, rolls: 0 }, daily: {}, weekday: [0, 0, 0, 0, 0, 0, 0], monthday: Array(31).fill(0), byBrand: {}, topCustomers: {} };
   const seenCust = new Map(); // customer -> ilk sipariş (bu dönemde) için global ilk siparişe ihtiyaç: firstOrderDate dışarıdan
   for (const i of invs) {
     const a = amt(i); R.total += a;
@@ -498,16 +515,19 @@ function salesReport(invs, { vat, brands, srcMap, payMap, repMap = {}, roll }) {
       R.byProduct[pk].qty += l.qty || 0; R.byProduct[pk].total += la; R.byProduct[pk].orders++; R.byProduct[pk].meters += l.band_meters || 0;
       const cat = l.category ? `${l.category} / ${l.subcategory}` : 'Kategorisiz';
       (R.byCategory[cat] ||= { qty: 0, total: 0 }); R.byCategory[cat].qty += l.qty || 0; R.byCategory[cat].total += la;
-      if (l.is_band) {
-        R.bands.meters += l.band_meters || 0; R.bands.pieces += l.qty || 0;
-        const t = l.subcategory || '?'; (R.bands.byType[t] ||= { meters: 0, pieces: 0, total: 0 }); R.bands.byType[t].meters += l.band_meters || 0; R.bands.byType[t].pieces += l.qty || 0; R.bands.byType[t].total += la;
-        const w = l.vwidth ? `${l.vwidth} × ${String(l.vthick).replace('.', ',')} mm` : '?'; (R.bands.byWidth[w] ||= { meters: 0, pieces: 0 }); R.bands.byWidth[w].meters += l.band_meters || 0; R.bands.byWidth[w].pieces += l.qty || 0;
+      const bi = bandInfo(l);
+      if (bi) {
+        R.bands.meters += bi.meters; R.bands.pieces += bi.pieces; if (bi.pieces && bi.meters) { R.bands.lenMeters = (R.bands.lenMeters || 0) + bi.meters; R.bands.lenPieces = (R.bands.lenPieces || 0) + bi.pieces; }
+        (R.bands.byType[bi.type] ||= { meters: 0, pieces: 0, total: 0 }); R.bands.byType[bi.type].meters += bi.meters; R.bands.byType[bi.type].pieces += bi.pieces; R.bands.byType[bi.type].total += la;
+        const w = bi.width ? `${bi.width} × ${String(bi.thick || '?').replace('.', ',')} mm` : '?'; (R.bands.byWidth[w] ||= { meters: 0, pieces: 0 }); R.bands.byWidth[w].meters += bi.meters; R.bands.byWidth[w].pieces += bi.pieces;
+        (R.bands.top[bi.key] ||= { name: bi.key, type: bi.type, meters: 0, pieces: 0, total: 0, orders: 0 }); const tp = R.bands.top[bi.key]; tp.meters += bi.meters; tp.pieces += bi.pieces; tp.total += la; tp.orders++;
       }
     }
   }
   R.customers = seenCust.size;
   R.avgBasket = R.orders ? R.total / R.orders : 0;
   R.bands.rolls = roll ? R.bands.meters / roll : 0;
+  R.bands.top = Object.values(R.bands.top).sort((a, b) => b.meters - a.meters || b.pieces - a.pieces).slice(0, 12);
   R.repeatRate = R.customers ? (Object.values(R.topCustomers).filter(c => c.orders > 1).length / R.customers) : 0;
   R.topCustomers = Object.entries(R.topCustomers).map(([id, c]) => ({ id: Number(id), ...c })).sort((a, b) => b.total - a.total).slice(0, 15);
   return R;

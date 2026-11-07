@@ -288,7 +288,7 @@ function payFrom(t, payments) {
   if (/kapida/.test(l)) { if (/kart|kredi|pos/.test(l)) return pick(payments, 'Kapıda Kredi Kartı'); if (/nakit/.test(l)) return pick(payments, 'Kapıda Nakit'); return 'Belirsiz'; }
   if (/havale|eft|iban|dekont|odeme geldi/.test(l)) return pick(payments, 'Havale');
   if (/pesin/.test(l)) return pick(payments, 'Havale');
-  if (/\bnakit\b/.test(l)) return pick(payments, 'Nakit');
+  if (/\bnakit\b/.test(l)) return pick(payments, 'Mağaza Nakit');
   if (/kredi kart|k\.?\s?kart|\bkart\b|pos/.test(l)) return pick(payments, 'Kredi Kartı');
   return 'Belirsiz';
 }

@@ -54,7 +54,7 @@ export async function reportsPage(ctx) {
   const prods = Object.values(r.byProduct).sort((a, b) => b.total - a.total);
   const cats = Object.entries(r.byCategory).sort((a, b) => b[1].total - a[1].total);
   const bT = Object.entries(r.bands.byType).sort((a, b) => b[1].meters - a[1].meters), bW = Object.entries(r.bands.byWidth).sort((a, b) => b[1].meters - a[1].meters).slice(0, 12);
-  const srcNames = Object.keys(r.cross), payNames = [...new Set(Object.values(r.cross).flatMap(o => Object.keys(o)))];
+  const srcNames = Object.keys(r.cross), payNames = (() => { const used = new Set(Object.values(r.cross).flatMap(o => Object.keys(o))), base = S.boot.payments.map(x => x.name); return [...base, ...[...used].filter(x => !base.includes(x))]; })();
   const brands = S.boot.brands.map((b, i) => ({ label: b.name, value: (r.byBrand[b.id] || {}).total || 0, orders: (r.byBrand[b.id] || {}).orders || 0, color: b.color || PALETTE[i], key: b.id, prev: P ? ((P.byBrand[b.id] || {}).total || 0) : null }));
 
   el.innerHTML = `

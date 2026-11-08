@@ -193,6 +193,17 @@ async function ensureDB(env) {
     for (const [i, [n]] of PAYMENTS.entries()) await run(env, 'UPDATE payment_methods SET sort=? WHERE name=?', i, n);
     await run(env, "INSERT INTO settings (key,value) VALUES ('migr_v12','1') ON CONFLICT(key) DO NOTHING");
   }
+  if (!(await first(env, "SELECT value FROM settings WHERE key='migr_v13'"))) { // v13: ürün düzenlemede silinen ondalıklı ölçüleri etiketten geri yükle
+    const vs = await all(env, "SELECT id, label, diameter, thickness, bore, teeth, width FROM variants WHERE label LIKE '%×%' AND (thickness IS NULL OR (label LIKE 'Ø%' AND (bore IS NULL OR teeth IS NULL)))");
+    const num = x => { const n = parseFloat(String(x).replace(',', '.')); return isFinite(n) ? n : null; };
+    for (const v of vs) {
+      let m = v.label.match(/^Ø\s*([\d.,]+)\s*×\s*([\d.,]+)\s*×\s*([\d.,\-]+)(?:\s*·\s*Z(\d+))?/);
+      if (m) { await run(env, 'UPDATE variants SET diameter=COALESCE(diameter,?), thickness=COALESCE(thickness,?), bore=COALESCE(bore,?), teeth=? WHERE id=?', num(m[1]), num(m[2]), m[3].replace(',', '.'), m[4] ? Number(m[4]) : v.teeth, v.id); continue; }
+      m = v.label.match(/^([\d.,]+)\s*×\s*([\d.,]+)\s*mm/);
+      if (m) await run(env, 'UPDATE variants SET width=COALESCE(width,?), thickness=COALESCE(thickness,?) WHERE id=?', num(m[1]), num(m[2]), v.id);
+    }
+    await run(env, "INSERT INTO settings (key,value) VALUES ('migr_v13','1') ON CONFLICT(key) DO NOTHING");
+  }
   await normalizeServices(env);
   READY = true;
 }

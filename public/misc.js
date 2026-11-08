@@ -56,9 +56,9 @@ function editProduct(ctx, p) {
     } }],
     onOpen: m => {
       const vb = m.querySelector('#vb');
-      const bind = () => $$('[data-rm]', vb).forEach(b => b.onclick = () => { const tr = b.closest('tr'); $$('#vb tr', m).forEach(r => { const v = vars[+r.dataset.i]; $$('[data-v]', r).forEach(i => { v[i.dataset.v] = i.value; }); }); vars.splice(+tr.dataset.i, 1); vb.innerHTML = vars.map(vrow).join(''); bind(); });
+      const bind = () => $$('[data-rm]', vb).forEach(b => b.onclick = () => { const tr = b.closest('tr'); $$('#vb tr', m).forEach(r => { const v = vars[+r.dataset.i]; $$('[data-v]', r).forEach(i => { const k = i.dataset.v; v[k] = ['label', 'tpi'].includes(k) ? i.value.trim() : parseNum(i.value); }); }); vars.splice(+tr.dataset.i, 1); vb.innerHTML = vars.map(vrow).join(''); bind(); });
       bind();
-      m.querySelector('#addv').onclick = () => { $$('#vb tr', m).forEach(r => { const v = vars[+r.dataset.i]; $$('[data-v]', r).forEach(i => { v[i.dataset.v] = i.value; }); }); vars.push({ label: '' }); vb.innerHTML = vars.map(vrow).join(''); bind(); vb.lastElementChild.querySelector('input').focus(); };
+      m.querySelector('#addv').onclick = () => { $$('#vb tr', m).forEach(r => { const v = vars[+r.dataset.i]; $$('[data-v]', r).forEach(i => { const k = i.dataset.v; v[k] = ['label', 'tpi'].includes(k) ? i.value.trim() : parseNum(i.value); }); }); vars.push({ label: '' }); vb.innerHTML = vars.map(vrow).join(''); bind(); vb.lastElementChild.querySelector('input').focus(); };
     } });
 }
 

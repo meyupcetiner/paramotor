@@ -94,7 +94,7 @@ const MONEY_RE = /(\d[\d.,]*)\s*(?:tl|₺|lira|try)\b/i;
 
 const HEAD_RE = /^\s*\[?(\d{1,2})[./](\d{1,2})[./](\d{2,4}),?\s+\d{1,2}[:.]\d{2}(?::\d{2})?\]?\s*(?:-\s*)?(?:~\s*)?([^:\n]{1,40}):\s?/;
 export const ITEM_RE = /^(\d{1,3})\s*[-–]\s*(?!\d{2,3}[-–]\d)(.+)$/;
-export const ITEM2_RE = /^(\d{1,3})\s*(?:ad\.?|adet|ade)\s*\.?\s+(.+)$/i;
+export const ITEM2_RE = /^(\d{1,3})\s*(?:adet|ade|ad)(?![\p{L}])\s*\.?\s*(.+)$/iu; // "2 ad.1826x13" gibi boşluksuz da
 const AMT = '(\\d{1,3}(?:[.,]\\d{3})+(?:,\\d{1,2})?|\\d{1,7}(?:,\\d{1,2})?)(?![\\d.,])';
 export const TOTAL_RE = new RegExp('^(wp|wa|whatsapp|watsap|fb|face|facebook|ig|[iİı]nsta|[iİı]nstagram|ma[gğ]aza(?:da)?|dükkan|dukkan|web|site|toplam)\\s*(\\([^)]*\\))?\\s*[:.]?\\s*(?:[a-zçğıöşü ]{0,20}?toplam\\s*)?' + AMT + '\\s*(?:₺|tl|try)?\\s*(.*)$', 'i');
 export const TOTAL_EMPTY_RE = /^(wp|insta|instagram|fb|facebook|ma[gğ]aza)\s*\(([^)]*)\)\s*$/i;

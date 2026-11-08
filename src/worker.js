@@ -820,7 +820,7 @@ async function api(req, env, url) {
       if (np.ok) existing = await first(env, 'SELECT c.id, c.name, (SELECT COUNT(*) FROM invoices i WHERE i.customer_id=c.id) orders FROM customers c WHERE brand_id=? AND phone=?', b.brand, np.phone);
       const odate = o.date || b.date || null;
       if (!odate && !flags.includes('date')) flags.push('date');
-      const rep = repOf(o.rep);
+      const rep = repOf(o.rep) || L.reps.find(r => r.name === 'M.Cemal' && r.active !== 0) || null; // temsilci yazmıyorsa M.Cemal
       const cikma = [];
       const items = (o.items || []).map(it => {
         const mt = matchItem({ ...it, raw_text: it.spec || it.raw_text }, cat);
@@ -867,7 +867,7 @@ async function api(req, env, url) {
       }
       if (o.rep_from_sender && !rep) flags.push('rep_sender');
       if (cikma.length) note = [cikma.map(x => 'Çıkma: ' + x).join(', '), note].filter(Boolean).join(' · ');
-      orders.push({ date: odate, exchange: !!o.exchange, is_promo: !!o.promo, vat_mode: o.vat_mode || null, rep_raw: o.rep || '', rep_id: rep ? rep.id : null, anonymous: !!o.anonymous, is_official: !!o.is_official, tax_no: o.tax_no || '', tax_office: o.tax_office || '', official_title: o.official_title || '', raw_text: o.raw_text || '', customer_name: o.customer_name || '', phone: np.ok ? np.phone : (o.phone || ''), address: o.address || '', il: o.il || '', ilce: o.ilce || '', source: o.source, source_id: srcId(o.source), payment: o.payment, payment_id: payId(o.payment), order_total: o.order_total ?? null, note, source_ref: o.source_ref || '', flags, existing_customer: existing, duplicate, items });
+      orders.push({ source_optional: !srcId(o.source) && /^\s*toplam\b/im.test(o.raw_text || ''), date: odate, exchange: !!o.exchange, is_promo: !!o.promo, vat_mode: o.vat_mode || null, rep_raw: o.rep || '', rep_id: rep ? rep.id : null, anonymous: !!o.anonymous, is_official: !!o.is_official, tax_no: o.tax_no || '', tax_office: o.tax_office || '', official_title: o.official_title || '', raw_text: o.raw_text || '', customer_name: o.customer_name || '', phone: np.ok ? np.phone : (o.phone || ''), address: o.address || '', il: o.il || '', ilce: o.ilce || '', source: o.source, source_id: srcId(o.source), payment: o.payment, payment_id: payId(o.payment), order_total: o.order_total ?? null, note, source_ref: o.source_ref || '', flags, existing_customer: existing, duplicate, items });
     }
     // aynı parti içinde mükerrer
     orders.forEach((o, i) => { for (let j = 0; j < i; j++) { const x = orders[j]; if (o.phone && o.phone === x.phone && JSON.stringify(o.items.map(t => t.variant_id || t.description).sort()) === JSON.stringify(x.items.map(t => t.variant_id || t.description).sort())) o.batch_duplicate_of = j; } });

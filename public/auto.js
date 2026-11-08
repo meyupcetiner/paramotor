@@ -79,7 +79,7 @@ const MISS_TR = { customer_name: 'Ad soyad', phone: 'Telefon', il: 'İl', ilce: 
 function missing(o) {
   const m = [];
   if (!o.anonymous) { if (!o.customer_name) m.push('customer_name'); if (!phoneNorm(o.phone)) m.push('phone'); }
-  if (!o.source_id) m.push('source');
+  if (!o.source_id && !o.source_optional) m.push('source'); // 'Toplam …₺' yazılan siparişte kaynak sorulmaz
   if (!o.payment_id && !o.anonymous && !o.exchange && !o.is_promo) m.push('payment');
   if (!o.date) m.push('date');
   if (!o.rep_id && !o.rep_raw) m.push('rep');

@@ -841,8 +841,21 @@ async function api(req, env, url) {
         if ((it.uncertain || []).includes('price_kind')) warn.push('Fiyatın birim mi satır toplamı mı olduğu net değil (toplam kabul edildi).');
         if (unit_price == null) warn.push('Fiyat mesajda yok.');
         for (const u of (it.uncertain || [])) if (!['qty', 'price', 'price_from_total', 'price_kind', 'price_split', 'price_even', 'qty_assumed'].includes(u)) warn.push(`Belirsiz: ${u}`);
-        return { raw_text: it.raw_text, note: it.note || '', product_id: mt.product_id, variant_id: mt.variant_id, description: v ? (it.second_hand ? 'Çıkma Testere' : shortName(v.p, mt.tpi_override ? { ...v, tpi: mt.tpi_override } : v, { withTpi: true })) : (it.spec || it.raw_text || ''), is_band: isBand, band_length_mm: isBand ? len : null, qty: qty ?? 1, qty_missing: qty == null, unit_price: unit_price ?? 0, confidence: mt.confidence, score: mt.score, alternatives: mt.alternatives, warnings: warn };
+        return { raw_text: it.raw_text, note: it.note || '', product_id: mt.product_id, variant_id: mt.variant_id, description: v ? (it.second_hand ? 'Çıkma Testere' : shortName(v.p, mt.tpi_override ? { ...v, tpi: mt.tpi_override } : v, { withTpi: true })) : (it.spec || it.raw_text || ''), is_band: isBand, band_length_mm: isBand ? len : null, qty: qty ?? 1, qty_missing: qty == null, unit_price: unit_price ?? 0, confidence: mt.confidence, score: mt.score, alternatives: mt.alternatives, warnings: warn, even_split: !!it.even_split };
       });
+      // toplam eşit bölündüyse: ürünlerin geçmiş fiyatına bak (şeritte metre fiyatı). Fiyatları yakınsa uyarı yok, farklıysa uyarı.
+      const ev = items.filter(it => it.even_split);
+      if (ev.length > 1) {
+        const ids = [...new Set(ev.map(it => it.variant_id).filter(Boolean))];
+        const hist = ids.length ? await all(env, `SELECT variant_id, SUM(line_net + line_vat) amt, SUM(qty) q, SUM(band_meters) m, COUNT(*) n FROM invoice_lines WHERE variant_id IN (${ids.map(() => '?').join(',')}) AND line_net > 0 GROUP BY variant_id`, ...ids) : [];
+        const ref = it => { const h = hist.find(x => x.variant_id === it.variant_id); if (!h || h.n < 2) return null; return it.is_band && h.m > 0 ? { per: 'm', v: h.amt / h.m } : h.q > 0 ? { per: 'u', v: h.amt / h.q } : null; };
+        const rs = ev.map(ref);
+        if (rs.every(Boolean) && new Set(rs.map(r => r.per)).size === 1) {
+          const vals = ev.map((it, k) => rs[k].per === 'm' && it.band_length_mm ? rs[k].v * it.band_length_mm / 1000 : rs[k].v);
+          const diff = Math.max(...vals) / Math.min(...vals) > 1.15;
+          for (const it of ev) { it.warnings = it.warnings.filter(w => !/eşit bölündü/.test(w)); if (diff) it.warnings.push('Toplam eşit bölündü; bu ürünlerin geçmiş birim fiyatları farklı.'); }
+        }
+      }
       // mükerrer kontrolü
       let duplicate = null;
       if (np.ok) {

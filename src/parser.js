@@ -472,10 +472,10 @@ function parseWA(m, idx, sources, payments, reps = []) {
     else if (missing.length > 1 && !priced.length) { // fiyatsız çok ürün: toplam adet başına eşit bölünür (dişi farklı aynı ürün aynı fiyat)
       const units = missing.reduce((a, it) => a + (Number(it.qty) || 1), 0);
       const per = Math.round(o.order_total / units * 100) / 100;
-      const key = it => { const t = it.spec || it.raw_text || ''; const d = extractDims(t); const w = fold(t).replace(/[^a-z ]+/g, ' ').split(/\s+/).filter(x => x.length > 2 && !['tpi', 'adet', 'dis', 'mm'].includes(x)).sort().join(' '); return [d.width, d.thickness, d.length_mm, d.diameter, d.bore, it.service ? 's' : '', w].join('|'); };
+      const key = it => { const t = it.spec || it.raw_text || ''; const d = extractDims(t); const w = fold(t).replace(/[^a-z ]+/g, ' ').split(/\s+/).filter(x => x.length > 2 && !['tpi', 'adet', 'dis', 'mm'].includes(x)).sort().join(' '); return [d.width, d.length_mm, d.diameter, d.diameter ? d.teeth : '', it.service ? 's' : '', w].join('|'); }; // kalınlık ve TPI fiyatı değiştirmez
       const same = new Set(missing.map(key)).size === 1;
       let acc = 0;
-      missing.forEach((it, k) => { const q = Number(it.qty) || 1; it.line_total = k === missing.length - 1 ? Math.round((o.order_total - acc) * 100) / 100 : Math.round(per * q * 100) / 100; acc += it.line_total; if (!same) it.uncertain.push('price_even'); });
+      missing.forEach((it, k) => { const q = Number(it.qty) || 1; it.line_total = k === missing.length - 1 ? Math.round((o.order_total - acc) * 100) / 100 : Math.round(per * q * 100) / 100; acc += it.line_total; it.even_split = true; if (!same) it.uncertain.push('price_even'); });
     } else if (missing.length > 1) missing.forEach(it => it.uncertain.push('price'));
     else if (o.vat_mode !== 'excl' && Math.abs(sum - o.order_total) > 1) notes.push(`Satır fiyatları toplamı (${sum}) mesajdaki toplamdan (${o.order_total}) farklı.`);
   }

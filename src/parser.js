@@ -265,6 +265,9 @@ function parseOne(m, idx, sources, payments) {
 //  toplam: Wp5350₺ · wp4950₺ · Wp 27.500₺ KDV DAHİL · wp(MD) 11.400₺ · insta3150₺ · İnsta4160₺(özel iskontolu) · Mağaza 4700₺ [iban|toplam]
 //          Mağazada ödenicek Toplam 1950₺ · TOPLAM 11.580₺ · 4500₺ · 19.000₺ (M.cemal) · 1600₺ Nakit · Wp(değişim ...) = değişim, satış değil
 //  temsilci: (M.cemal) (Dogan) (DOGAN) (dogan) (M.arslan) (Dogan hdy) (M.arslan) (ödeme geldi) — yoksa gönderen kişi
+// "ACİL", "YURTİÇİ KARGO ACİL" gibi başlıklar: büyük İ /i ile eşleşmediği için küçültüp de bakılır
+const isStatus = l => STATUS_RE.test(l) || STATUS_RE.test(l.toLocaleLowerCase('tr'));
+const NOT_NAME_RE = /(^|\s)(acil|acele|ivedi|kargo\w*|g[öo]nder\w*|teslim\w*|kap[ıi]da|havale|[öo]deme|sipari[şs]\w*|fatura\w*|bug[üu]n|yar[ıi]n)(\s|$|[.!,:])/;
 const STATUS_RE = /(kap[ıi]da|havale|eft|iban|resm[iİ]|gayr[iİ]|ma[gğ]aza|teslim|ptt|kargo|yurt[iİ]ç[iİ]|aras|mng|s[uü]rat|elden|nakit|kredi|k\.?\s?kart|[öo]deme|sat[ıi][şs]|pe[şs]in|adrese|b[ıi]rak|nakliye|acil|al[ıi]c[ıi]|p\.?ö|reklam|bedelsiz|hediye|[uü]cretsiz|numune)/i;
 const SRC_MAP = [[/^(wp|wa|whatsapp|watsap)$/i, 'WhatsApp'], [/^(fb|face|facebook)$/i, 'Facebook'], [/^([iİı]g|[iİı]nsta|[iİı]nstagram)$/i, 'Instagram'], [/^(ma[gğ]aza|ma[gğ]azada|dükkan|dukkan)$/i, 'Mağaza']];
 const TAX_RE = /(?:\(?\s*([^()\d]*?)\s*V\.?\s*D\.?\s*(?:tax\s*no|vergi\s*no|vkn|tckn|no)?\s*[:.]?\s*([\d\s]{10,14})\s*\)?)|(?:\b(?:VKN|TCKN|vergi\s*no)\s*[:.]?\s*([\d\s]{10,14})(?:\s*V\.?\s*D\.?\s*([\p{L} ]+))?)/iu;
@@ -315,8 +318,8 @@ function parseWA(m, idx, sources, payments, reps = []) {
     if (/^ma[gğ]aza\s*(sat[ıi][şs][ıi]?|m[üu][şs]terisi|teslim)?\s*$/i.test(l)) { o.store = true; return; }
     // durum / başlık satırı (genelde ilk satır, bazen *PEŞİN ÖDEME* sonda)
     const upper = (() => { const L = l.replace(/\([^)]*\)/g, '').replace(/[^\p{L}]/gu, ''); return L.length >= 4 && L.replace(/[^\p{Lu}]/gu, '').length / L.length > 0.6; })();
-    if (/^\*.*\*$/.test(raw) || (i === 0 && upper && STATUS_RE.test(l) && !/\d{3,}/.test(l))) {
-      if (STATUS_RE.test(l) && !/\d{3,}/.test(l)) {
+    if (/^\*.*\*$/.test(raw) || (i === 0 && upper && isStatus(l) && !/\d{3,}/.test(l))) {
+      if (isStatus(l) && !/\d{3,}/.test(l)) {
         const p = payFrom(l, payments); if (p !== 'Belirsiz') o.payment = p;
         if (/kap[ıi]da/i.test(l) && p === 'Belirsiz') notes.push('Kapıda ödeme yazıyor; nakit/kart belirtilmemiş.');
         if (/resm[iİ]/i.test(l) && !/gayr/i.test(l)) o.is_official = true;
@@ -346,7 +349,7 @@ function parseWA(m, idx, sources, payments, reps = []) {
       if (mm[2]) { const inner = mm[2].slice(1, -1); if (EXCH_RE.test(inner)) o.exchange = true; const pp = payFrom(inner, payments); if (pp !== 'Belirsiz') o.payment = pp; const onlyPay = !fold(inner).replace(/ptt|kapida|kontroll?u|nakit|kredi|kart[ıi]?|havale|eft|odeme|ile|[^a-z]/g, '').trim(); if (!(pp !== 'Belirsiz' && onlyPay)) notes.push(inner); }
       let tail = (mm[4] || '').trim();
       const rp = tail.match(/\(([^)]+)\)/g) || [];
-      for (const x of rp) { const t = x.slice(1, -1); if (!o.rep && isRepToken(t, reps)) takeRep(t); else notes.push(t); }
+      for (const x of rp) { const t = x.slice(1, -1); if (!o.rep && isRepToken(t, reps)) takeRep(t); else { const pp = payFrom(t, payments); if (pp !== 'Belirsiz') o.payment = pp; notes.push(t); } }
       tail = tail.replace(/\([^)]*\)/g, '').trim();
       if (tail) { const p = payFrom(tail, payments); if (p !== 'Belirsiz') o.payment = p; if (/kdv\s*dahil/i.test(tail)) o.vat_mode = 'incl'; if (!/^(toplam|kdv dahil)$/i.test(tail)) notes.push(tail); }
       return;
@@ -395,7 +398,7 @@ function parseWA(m, idx, sources, payments, reps = []) {
   const addr = []; let invBlock = false; const invAddr = [];
   for (let l of rest) {
     if (/^fatura\s*(bilgi\w*|adres\w*|icin)\b/.test(fold(l.replace(/[*_:]/g, '')).trim())) { invBlock = true; o.is_official = true; continue; }
-    let vd = l.match(/V\.?\s*D\.?\s*[:.]?\s*([\p{L}][\p{L} ]*?)\s*[-,/]?\s*(?:VKN|TCKN|TC|vergi\s*no)\s*[:.]?\s*(\d[\d\s]{9,13})/iu);
+    let vd = l.match(/V\.?\s*D\.?\s*[:.]?\s*(?!tax|vergi|vkn|tc)([\p{L}][\p{L} ]*?)\s*[-,/]?\s*(?:(?:VKN|TCKN|TC|vergi\s*no)\s*[:.]?\s*)?(\d[\d\s]{9,13})/iu);
     if (vd) vd = { all: vd[0], office: vd[1], no: vd[2] };
     else { const w = l.match(/(?:VKN|TCKN|vergi\s*no)\s*[:.]?\s*(\d[\d\s]{9,13})\s*[-,/]?\s*V\.?\s*D\.?\s*[:.]?\s*([\p{L}][\p{L} ]*)/iu); if (w) vd = { all: w[0], office: w[2], no: w[1] }; }
     if (vd) { o.tax_office = vd.office.trim(); o.tax_no = vd.no.replace(/\s/g, ''); o.is_official = true; l = l.replace(vd.all, '').trim(); if (!l) continue; }
@@ -425,6 +428,7 @@ function parseWA(m, idx, sources, payments, reps = []) {
       if (left) { const pp = left.match(/^\((.*)\)$/); if (pp) notes.push(pp[1]); else if (!o.customer_name && !/\d/.test(left)) o.customer_name = left; else addr.push(left); }
       continue;
     }
+    if (!o.customer_name && !/\d{2,}/.test(l) && NOT_NAME_RE.test(l.toLocaleLowerCase('tr')) && !COMPANY_RE.test(l)) { notes.push(l); continue; } // "Acil gönderilecek" isim değil
     if (!o.customer_name && !/\d{2,}/.test(l) && (!ADDRESS_WORDS.test(l) || COMPANY_RE.test(l)) && (!addr.length || !o.phone)) {
       const pn = l.match(/^(.*?)\s*\(([^)]*)\)\s*$/);
       if (pn && pn[1]) { o.customer_name = pn[1].trim(); notes.push(pn[2]); } else o.customer_name = l;
@@ -438,7 +442,10 @@ function parseWA(m, idx, sources, payments, reps = []) {
   if (invAddr.length) notes.push('Fatura adresi: ' + invAddr.join(' '));
   if (!o.official_title && o.customer_name && COMPANY_RE.test(o.customer_name)) o.official_title = o.customer_name;
   if (o.is_official && !o.official_title) o.official_title = o.customer_name;
-  const loc = o.address ? findIlIlce(o.address) : { il: null, ilce: null };
+  let loc = o.address ? findIlIlce(o.address) : { il: null, ilce: null };
+  // teslimat adresinde il/ilçe yoksa fatura (vergi) adresinden al
+  if (!loc.il && invAddr.length) { const l2 = findIlIlce(invAddr.join(' ')); if (l2.il) { loc = l2; if (!o.address) o.address = invAddr.join(' ').replace(/\s+/g, ' ').trim(); } }
+  if (loc.il && !loc.ilce && invAddr.length) { const l2 = findIlIlce(invAddr.join(' ')); if (l2.il === loc.il && l2.ilce) loc = l2; }
   o.il = loc.il || ''; o.ilce = loc.ilce || '';
   if (!o.rep && m.sender && !/testere|teseresan|testeresan|ustas/i.test(m.sender)) { o.rep = m.sender; o.rep_from_sender = true; }
   if (o.store && o.source === 'Belirsiz' && sources.includes('Mağaza')) o.source = 'Mağaza';

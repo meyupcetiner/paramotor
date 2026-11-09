@@ -2,8 +2,16 @@
 import { shortName } from './short.js';
 export const S = { boot: null, catalog: null, catIndex: null };
 
+// Yeni sürüm yayınlandıysa eski arayüzle yeni veri karışmasın: sayfa otomatik yenilenir
+let APP_VER = null, reloading = false;
+function checkVersion(v) {
+  if (!v || reloading) return;
+  if (!APP_VER) { APP_VER = v; return; }
+  if (v !== APP_VER) { reloading = true; try { sessionStorage.setItem('pm_upd', '1'); } catch { } location.reload(); }
+}
 export async function api(path, opt = {}) {
   const r = await fetch('/api' + path, { method: opt.method || 'GET', headers: { 'content-type': 'application/json', 'x-pm': '1' }, body: opt.body ? JSON.stringify(opt.body) : undefined, credentials: 'same-origin' });
+  checkVersion(r.headers.get('x-app-version'));
   let d = null; try { d = await r.json(); } catch { }
   if (r.status === 401 && !path.startsWith('/login') && !path.startsWith('/password')) { location.hash = '#/giris'; throw new Error('Oturum gerekli'); }
   if (!r.ok) throw new Error((d && d.error) || ('Hata ' + r.status));

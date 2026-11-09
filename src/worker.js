@@ -682,7 +682,11 @@ export default {
     if (!url.pathname.startsWith('/api/')) return env.ASSETS.fetch(req);
     try {
       await ensureDB(env);
-      return await api(req, env, url);
+      const res = await api(req, env, url);
+      // yayın sürümü: arayüz eski koddaysa (sayfa yenilenmeden yeni sürüm geldiyse) tarayıcı kendini yeniler
+      const ver = env.CF_VERSION_METADATA && env.CF_VERSION_METADATA.id;
+      if (ver && res && res.headers) { try { res.headers.set('x-app-version', ver); } catch { const r2 = new Response(res.body, res); r2.headers.set('x-app-version', ver); return r2; } }
+      return res;
     } catch (e) {
       return err(e.message || String(e), 500);
     }

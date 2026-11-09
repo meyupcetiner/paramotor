@@ -222,6 +222,30 @@ async function ensureDB(env) {
     }
     await run(env, "INSERT INTO settings (key,value) VALUES ('migr_v15','1') ON CONFLICT(key) DO NOTHING");
   }
+  if (!(await first(env, "SELECT value FROM settings WHERE key='migr_v16'"))) { // v16: benzer isim + aynı il/ilçe müşterileri birleştir (FRENAKS ↔ FRENAKS İNŞ. LTD. ŞTİ)
+    const cs = await all(env, "SELECT c.*, (SELECT COUNT(*) FROM invoices i WHERE i.customer_id=c.id) n FROM customers c WHERE c.name IS NOT NULL AND c.il IS NOT NULL AND c.il<>'' AND c.ilce IS NOT NULL AND c.ilce<>''");
+    const groups = {}; for (const c of cs) (groups[c.brand_id + '|' + custKey(c.il) + '|' + custKey(c.ilce)] ||= []).push(c);
+    for (const g of Object.values(groups)) {
+      if (g.length < 2) continue;
+      g.sort((a, b) => (b.official_title ? 1 : 0) - (a.official_title ? 1 : 0) || (b.phone ? 1 : 0) - (a.phone ? 1 : 0) || b.n - a.n || a.id - b.id);
+      const used = new Set();
+      for (const keep of g) {
+        if (used.has(keep.id)) continue; used.add(keep.id);
+        const dup = g.filter(x => !used.has(x.id) && similarName(x.name, keep.name)); if (!dup.length) continue;
+        for (const d of dup) used.add(d.id);
+        const fill = k => keep[k] || (dup.find(d => d[k]) || {})[k] || null;
+        const others = dup.filter(d => d.phone && d.phone !== keep.phone).map(d => d.phone);
+        const note = [keep.note, ...dup.map(d => d.note), others.length ? 'Diğer telefon: ' + others.join(', ') : ''].filter(Boolean).join(' · ') || null;
+        const ids = dup.map(d => d.id), ph = ids.map(() => '?').join(',');
+        await env.DB.batch([
+          env.DB.prepare(`UPDATE invoices SET customer_id=? WHERE customer_id IN (${ph})`).bind(keep.id, ...ids),
+          env.DB.prepare(`DELETE FROM customers WHERE id IN (${ph})`).bind(...ids),
+          env.DB.prepare('UPDATE customers SET phone=?, address=?, tax_no=?, official_title=?, tax_office=?, is_official=?, note=? WHERE id=?').bind(fill('phone'), fill('address'), fill('tax_no'), fill('official_title'), fill('tax_office'), dup.some(d => d.is_official) || keep.is_official ? 1 : 0, note, keep.id)
+        ]);
+      }
+    }
+    await run(env, "INSERT INTO settings (key,value) VALUES ('migr_v16','1') ON CONFLICT(key) DO NOTHING");
+  }
   await normalizeServices(env);
   READY = true;
 }
@@ -339,6 +363,18 @@ export function sameName(a, b) {
   const tx = x.split(' ').filter(t => t.length >= 4 && !STOPW.has(t)), ty = new Set(y.split(' ').filter(t => t.length >= 4 && !STOPW.has(t)));
   return tx.some(t => ty.has(t) || [...ty].some(u => 1 - lev(t, u) / Math.max(t.length, u.length) >= 0.8));
 }
+// Birleştirme için sıkı benzerlik: "FRENAKS" ↔ "FRENAKS İNŞ. ... LTD. ŞTİ", "MOB." ↔ "MIB." yazım farkı, "Arslan" ↔ "Aslan" (aynı il/ilçe şartıyla)
+const CO_WORDS = /^(ltd|sti|san|tic|ve|as|ith|ihr|insaat|ins|sirketi|limited|anonim|dis|paz|mob|mib|yapi|makina|makine|metal|otomotiv|mobilya|ahsap|kereste)$/;
+export function similarName(a, b) {
+  const x = custKey(a), y = custKey(b);
+  if (!x || !y || /\s\d+$/.test(x) || /\s\d+$/.test(y)) return false; // "İsim 2" bilinçli ayrı müşteri
+  const cx = x.replace(/ /g, ''), cy = y.replace(/ /g, '');
+  if (cx === cy) return true;
+  if (Math.min(cx.length, cy.length) >= 8 && 1 - lev(cx, cy) / Math.max(cx.length, cy.length) >= 0.9) return true;
+  const tx = x.split(' '), ty = y.split(' '); const [sh, lo] = tx.length <= ty.length ? [tx, ty] : [ty, tx];
+  return sh.join('').length >= 5 && sh.every((t, i) => t === lo[i]) && (sh.length >= 2 || lo.slice(1).some(t => CO_WORDS.test(t)));
+}
+const samePlace = (a, b) => a.il && b.il && a.ilce && b.ilce && custKey(a.il) === custKey(b.il) && custKey(a.ilce) === custKey(b.ilce);
 async function upsertCustomer(env, brand, c) {
   const np = normalizePhone(c.phone);
   const phone = np.ok ? np.phone : (c.phone || '').trim() || null;
@@ -347,6 +383,7 @@ async function upsertCustomer(env, brand, c) {
   if (!row && phone) { const rs = await all(env, 'SELECT * FROM customers WHERE brand_id=? AND phone=? ORDER BY id', brand, phone); row = !c.name ? rs[0] || null : rs.find(x => sameName(x.name, c.name) || (x.official_title && sameName(x.official_title, c.name)) || (c.official_title && sameName(x.name, c.official_title))) || null; }
   const f = { name: c.name || null, phone, address: c.address || null, il: c.il || null, ilce: c.ilce || null };
   if (!row && !f.name && !f.phone) return null; // isimsiz mağaza müşterisi: müşteri kaydı açılmaz
+  if (!row && f.name && f.il && f.ilce) { const cs = await all(env, 'SELECT * FROM customers WHERE brand_id=? AND il IS NOT NULL AND ilce IS NOT NULL AND IFNULL(archived,0)=0', brand); row = cs.find(x => samePlace(x, f) && custKey(x.name) !== custKey(f.name) && similarName(x.name, f.name)) || null; } // benzer isim + aynı il/ilçe = aynı müşteri
   if (!row && f.name) { // telefonla bulunamadı: aynı isimli müşteriler
     const base = custBase(f.name), key = custKey(f.name);
     const fam = (await all(env, 'SELECT * FROM customers WHERE brand_id=? AND name IS NOT NULL', brand)).filter(x => custBase(x.name) === base);

@@ -20,6 +20,12 @@ export const DEFAULT_SETTINGS = {
   claude_model: 'claude-sonnet-5-5',
   auto_engine: 'claude',
   expense_allocation: 'ciro',
+  rt_days: { hot: 60, warm: 180 },
+  rt_templates: {
+    hot: 'Merhaba {ad}, {marka} olarak tekrar teşekkür ederiz. Testereleriniz için bileme, kaynak ya da yeni şerit ihtiyacınız olursa buradan yazmanız yeterli. İyi çalışmalar!',
+    warm: 'Merhaba {ad}, {marka} olarak sizi hatırladık 🙂 En son {tarih} tarihinde {urun} almıştınız. Yeni stoklarımız geldi, ihtiyacınız olursa aynı gün kargoya veriyoruz.',
+    cold: 'Merhaba {ad}, uzun zamandır görüşemedik! {marka} olarak size özel indirimle tekrar hizmet vermek isteriz. Ölçünüzü yazmanız yeterli, hemen fiyat verelim.'
+  },
   expense_manual_shares: { 'testere-com-tr': 34, 'testere-ustasi': 33, 'testere-fabrikasi': 33 },
   expense_categories: ['Reklam (Meta)', 'Kargo', 'Ambalaj', 'Malzeme / Alış', 'Personel', 'Kira', 'Komisyon', 'Vergi / Harç', 'Diğer'],
   band_roll_m: 100,
@@ -50,6 +56,7 @@ async function ensureDB(env) {
   if (!cols.some(c => c.name === 'raw_msg')) await env.DB.exec('ALTER TABLE invoices ADD COLUMN raw_msg TEXT;');
   if (!cols.some(c => c.name === 'is_promo')) await env.DB.exec('ALTER TABLE invoices ADD COLUMN is_promo INTEGER DEFAULT 0;');
   const ccols = await all(env, "PRAGMA table_info(customers)");
+  if (!ccols.some(c => c.name === 'last_contact')) await env.DB.exec('ALTER TABLE customers ADD COLUMN last_contact TEXT;'); // retargeting: son arama/mesaj
   if (!ccols.some(c => c.name === 'archived')) await env.DB.exec('ALTER TABLE customers ADD COLUMN archived INTEGER DEFAULT 0;'); // arşivlenen müşterinin faturaları hiçbir hesaba girmez
   // v2 göçü: KDV'siz varsayılan, yeni ödeme yöntemleri, temsilciler, hizmet ürünleri
   const mg = await first(env, "SELECT value FROM settings WHERE key='migr_v2'");
@@ -589,6 +596,21 @@ async function customerAggregates(env, brand, settings) {
   });
 }
 
+// Retargeting: sıcak (son siparişten bu yana ≤ hot gün), ılık (≤ warm gün), soğuk (daha eski)
+async function retargeting(env, settings) {
+  const D = { hot: 60, warm: 180, ...(settings.rt_days || {}) };
+  const list = await customerAggregates(env, 'all', settings);
+  const prods = new Map((await all(env, 'SELECT id, name FROM products')).map(p => [p.id, p.name]));
+  // her müşterinin son siparişindeki ürün (şablondaki {urun})
+  const lastLine = new Map((await all(env, "SELECT i.customer_id cid, l.description d, i.date FROM invoices i JOIN invoice_lines l ON l.invoice_id=i.id WHERE i.customer_id IS NOT NULL ORDER BY i.date, i.id, l.sort DESC, l.id DESC")).map(r => [r.cid, r.d]));
+  const out = list.filter(c => c.order_count > 0).map(c => {
+    const tier = c.days_since == null ? 'cold' : c.days_since <= D.hot ? 'hot' : c.days_since <= D.warm ? 'warm' : 'cold';
+    const lp = (c.member_ids || [c.id]).map(id => lastLine.get(id)).filter(Boolean).pop() || (c.product_ids && prods.get(c.product_ids[0])) || '';
+    return { id: c.id, member_ids: c.member_ids || [c.id], name: c.name, phone: c.phone, il: c.il, ilce: c.ilce, brand_ids: c.brand_ids || [c.brand_id], order_count: c.order_count, total: c.total, avg_basket: c.avg_basket, first_order: c.first_order, last_order: c.last_order, days_since: c.days_since, avg_gap: c.avg_gap, due: c.order_count >= 2 && c.avg_gap > 0 && c.days_since >= c.avg_gap, top_category: c.top_category, categories: Object.keys(c.categories || {}), last_product: String(lp).replace(/\s*·.*$/, ''), last_contact: c.last_contact || null, is_official: !!c.is_official, segment: c.segment, tier };
+  });
+  return { days: D, templates: settings.rt_templates || DEFAULT_SETTINGS.rt_templates, customers: out };
+}
+
 function filterCustomers(list, q) {
   const has = k => q.has(k) && q.get(k) !== '';
   const num = k => Number(q.get(k));
@@ -860,6 +882,8 @@ async function api(req, env, url) {
     const f = fold(s); const d = s.replace(/\D/g, '');
     return json(rows.filter(c => fold(c.name).includes(f) || (d.length >= 4 && String(c.phone || '').includes(d))).slice(0, 10));
   }
+  if (p === '/retargeting') return json(await retargeting(env, settings));
+  if ((mm = p.match(/^\/customers\/(\d+)\/contact$/)) && m === 'POST') { const b = await body(req); const ids = (b.ids || [Number(mm[1])]).map(Number).filter(Boolean); const now = new Date().toISOString().slice(0, 16).replace('T', ' ') + '|' + (b.kind === 'call' ? 'call' : 'wa'); for (const i of ids) await run(env, 'UPDATE customers SET last_contact=? WHERE id=?', now, i); return json({ ok: true, last_contact: now }); }
   if ((mm = p.match(/^\/customers\/(\d+)\/archive$/)) && m === 'POST') { const b = await body(req); await run(env, 'UPDATE customers SET archived=? WHERE id=?', b.archived ? 1 : 0, Number(mm[1])); return json({ ok: true }); }
   if (p === '/archive') {
     const brand = q.get('brand');
@@ -875,6 +899,7 @@ async function api(req, env, url) {
       const agg = (await customerAggregates(env, gen ? 'all' : c.brand_id, settings)).find(x => gen ? (x.member_ids || [x.id]).includes(id) : x.id === id);
       const ids = gen && agg && agg.member_ids ? agg.member_ids : [id];
       const invs = await all(env, `SELECT * FROM invoices WHERE customer_id IN (${ids.map(() => '?').join(',')}) ORDER BY date DESC, id DESC`, ...ids);
+      if (invs.length) { const ls = await all(env, `SELECT invoice_id, description, qty, unit FROM invoice_lines WHERE invoice_id IN (${invs.map(() => '?').join(',')}) ORDER BY sort, id`, ...invs.map(i => i.id)); for (const i of invs) i.lines_summary = ls.filter(l => l.invoice_id === i.id).map(l => `${+(+l.qty).toFixed(2)}${l.unit === 'Metre' ? ' m' : ''} × ${l.description}`).join(', '); }
       if (!agg) { const ds = invs.map(i => i.date).sort(); Object.assign(c, { order_count: invs.length, total: r2(invs.reduce((a, i) => a + (i.total || 0), 0)), first_order: ds[0] || null, last_order: ds[ds.length - 1] || null, segment: c.archived ? 'Arşivde' : 'Sipariş yok' }); c.avg_basket = c.order_count ? r2(c.total / c.order_count) : 0; }
       return json({ customer: agg || c, invoices: invs });
     }

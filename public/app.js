@@ -3,6 +3,7 @@ import { S, api, esc, icon, toast, money, int, today, rangePreset } from './core
 import { invoicesPage, invoiceForm } from './invoices.js';
 import { autoPage } from './auto.js';
 import { customersPage, customerDetail, archivePage } from './customers.js';
+import { retargetPage } from './retarget.js';
 import { reportsPage, pnlPage, expensesPage, productReportPage } from './reports.js';
 import { productsPage, settingsPage } from './misc.js';
 
@@ -108,6 +109,7 @@ const GEN_NAV = [
   ['ozet', 'pie', 'Genel Bakış'],
   ['musteriler', 'users', 'Müşteriler'],
   ['urunler', 'box', 'Ürün Raporları'],
+  ['retargeting', 'target', 'Retargeting'],
   ['gelir-gider', 'coins', 'Gelir-Gider Raporu'],
   ['giderler', 'wallet', 'Giderler (ortak dahil)'],
   ['ayarlar', 'gear', 'Ayarlar']
@@ -193,6 +195,7 @@ async function route() {
       if (p0 === 'musteriler') return await customersPage(ctx);
       if (p0 === 'musteri') return await customerDetail(ctx, Number(sub[1]));
       if (p0 === 'urunler') return await productReportPage(ctx);
+      if (p0 === 'retargeting') return await retargetPage(ctx);
       if (p0 === 'urun') return await productReportPage(ctx, Number(sub[1]));
     }
     if (p0 === 'ozet') return await reportsPage(ctx);

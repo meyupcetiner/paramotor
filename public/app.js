@@ -3,7 +3,7 @@ import { S, api, esc, icon, toast, money, int, today, rangePreset } from './core
 import { invoicesPage, invoiceForm } from './invoices.js';
 import { autoPage } from './auto.js';
 import { customersPage, customerDetail } from './customers.js';
-import { reportsPage, pnlPage, expensesPage } from './reports.js';
+import { reportsPage, pnlPage, expensesPage, productReportPage } from './reports.js';
 import { productsPage, settingsPage } from './misc.js';
 
 const root = document.getElementById('root');
@@ -106,9 +106,10 @@ const BRAND_NAV = b => [
 ];
 const GEN_NAV = [
   ['ozet', 'pie', 'Genel Bakış'],
+  ['musteriler', 'users', 'Müşteriler'],
+  ['urunler', 'box', 'Ürün Raporları'],
   ['gelir-gider', 'coins', 'Gelir-Gider Raporu'],
   ['giderler', 'wallet', 'Giderler (ortak dahil)'],
-  ['urunler', 'box', 'Ürünler'],
   ['ayarlar', 'gear', 'Ayarlar']
 ];
 
@@ -134,7 +135,7 @@ function shell(brand) {
     <main class="main"><header class="topbar"><button class="btn ghost icon burger" id="bg">${icon('menu')}</button><h1 id="title"></h1><span class="sp"></span>
       <div class="user"><div><b>${esc(b ? b.name : 'Testeresan')}</b><span>${esc(b ? 'MARKA PANELİ' : 'GENEL MUHASEBE')}</span></div><a class="avatar" href="#/sec" title="Marka değiştir">${icon('user')}</a></div></header>
       <section class="content" id="page"></section></main>
-    <nav class="mtabs">${(brand ? [['raporlar', 'chart', 'Rapor'], ['faturalar', 'invoice', 'Satışlar'], ['musteriler', 'users', 'Müşteri'], ['gelir-gider', 'coins', 'Gelir-Gider']] : [['ozet', 'pie', 'Özet'], ['gelir-gider', 'coins', 'Gelir-Gider'], ['giderler', 'wallet', 'Giderler']]).map(([p, ic, t]) => `<a href="${base}${p}" data-mp="${p}">${icon(ic)}<span>${t}</span></a>`).join('')}${brand ? '' : `<a href="#/sec">${icon('swap')}<span>Markalar</span></a>`}<a href="javascript:void 0" id="mmenu">${icon('menu')}<span>Menü</span></a></nav></div>`;
+    <nav class="mtabs">${(brand ? [['raporlar', 'chart', 'Rapor'], ['faturalar', 'invoice', 'Satışlar'], ['musteriler', 'users', 'Müşteri'], ['gelir-gider', 'coins', 'Gelir-Gider']] : [['ozet', 'pie', 'Özet'], ['urunler', 'box', 'Ürün'], ['musteriler', 'users', 'Müşteri'], ['gelir-gider', 'coins', 'Gelir-Gider']]).map(([p, ic, t]) => `<a href="${base}${p}" data-mp="${p}">${icon(ic)}<span>${t}</span></a>`).join('')}<a href="javascript:void 0" id="mmenu">${icon('menu')}<span>Menü</span></a></nav></div>`;
   const app = root.querySelector('#app');
   root.querySelector('#col').onclick = () => { app.classList.toggle('collapsed'); ls('pm_side', app.classList.contains('collapsed') ? '1' : '0'); };
   root.querySelector('#bg').onclick = () => { app.classList.add('drawer'); const s = document.createElement('div'); s.className = 'scrim'; s.onclick = () => { app.classList.remove('drawer'); s.remove(); }; app.appendChild(s); };
@@ -145,8 +146,8 @@ function shell(brand) {
 function markNav(p) {
   const app = document.getElementById('app'); if (!app) return;
   app.classList.remove('drawer'); app.querySelector('.scrim')?.remove();
-  app.querySelectorAll('.mtabs a[data-mp]').forEach(a => a.classList.toggle('on', p === a.dataset.mp || (p.startsWith('fatura') && a.dataset.mp === 'faturalar') || (p.startsWith('musteri') && a.dataset.mp === 'musteriler')));
-  app.querySelectorAll('.side nav a[data-p]').forEach(a => a.classList.toggle('on', p === a.dataset.p || (p.startsWith('fatura/') && a.dataset.p === 'faturalar' && p !== 'fatura/yeni') || (p.startsWith('musteri/') && a.dataset.p === 'musteriler')));
+  app.querySelectorAll('.mtabs a[data-mp]').forEach(a => a.classList.toggle('on', p === a.dataset.mp || (p.startsWith('fatura') && a.dataset.mp === 'faturalar') || (p.startsWith('musteri') && a.dataset.mp === 'musteriler') || (p.startsWith('urun') && a.dataset.mp === 'urunler')));
+  app.querySelectorAll('.side nav a[data-p]').forEach(a => a.classList.toggle('on', p === a.dataset.p || (p.startsWith('fatura/') && a.dataset.p === 'faturalar' && p !== 'fatura/yeni') || (p.startsWith('musteri/') && a.dataset.p === 'musteriler') || (p.startsWith('urun/') && a.dataset.p === 'urunler')));
 }
 export function setTitle(html) { const t = document.getElementById('title'); if (t) t.innerHTML = html; document.title = (t ? t.textContent : '') + ' · Zeplin'; }
 
@@ -186,6 +187,12 @@ async function route() {
       if (p0 === 'musteriler') return await customersPage(ctx);
       if (p0 === 'musteri') return await customerDetail(ctx, Number(sub[1]));
       if (p0 === 'raporlar') return await reportsPage(ctx);
+    }
+    else {
+      if (p0 === 'musteriler') return await customersPage(ctx);
+      if (p0 === 'musteri') return await customerDetail(ctx, Number(sub[1]));
+      if (p0 === 'urunler') return await productReportPage(ctx);
+      if (p0 === 'urun') return await productReportPage(ctx, Number(sub[1]));
     }
     if (p0 === 'ozet') return await reportsPage(ctx);
     if (p0 === 'gelir-gider') return await pnlPage(ctx);

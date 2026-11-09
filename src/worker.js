@@ -204,6 +204,11 @@ async function ensureDB(env) {
     }
     await run(env, "INSERT INTO settings (key,value) VALUES ('migr_v13','1') ON CONFLICT(key) DO NOTHING");
   }
+  if (!(await first(env, "SELECT value FROM settings WHERE key='migr_v14'"))) { // v14: "Ø80 x 0.3 x 22" gibi x'li etiketlerden de kalınlık doldur (freze)
+    const vs = await all(env, "SELECT * FROM variants WHERE label LIKE 'Ø%' AND (thickness IS NULL OR diameter IS NULL)");
+    for (const v of vs) { const o = { ...v }; fillFromLabel(o); if (o.thickness !== v.thickness || o.diameter !== v.diameter || o.teeth !== v.teeth || o.bore !== v.bore) await run(env, 'UPDATE variants SET diameter=?, thickness=?, bore=?, teeth=? WHERE id=?', o.diameter, o.thickness, o.bore, o.teeth, v.id); }
+    await run(env, "INSERT INTO settings (key,value) VALUES ('migr_v14','1') ON CONFLICT(key) DO NOTHING");
+  }
   await normalizeServices(env);
   READY = true;
 }
@@ -407,6 +412,50 @@ async function loadSales(env, brands, from, to) {
   return [...by.values()];
 }
 
+// ---------------- Ürün raporu (genel muhasebe) ----------------
+const COMPANY_RE = /\b(ltd|şti|sti|a\.?ş\.?|ticaret|tic\.|san\.|sanayi|inşaat|insaat|limited|anonim|pazarlama|paz\.|yapı|yapi|ferforje|otomotiv|makina|makine|mobilya|kereste|gıda|gida|hırdavat|hirdavat|dekorasyon|mermer|metal|elektrik|ahşap|ahsap|alüminyum|aluminyum|cam|plastik|koop\w*|belediye\w*|müdürlüğü|kooperatif)\b/i;
+async function productReport(env, q) {
+  const vat = q.get('vat') === 'incl' ? 'incl' : 'excl';
+  const pid = q.get('product') ? Number(q.get('product')) : null;
+  const sales = (await loadSales(env, brandFilter(q.get('brand')), q.get('from'), q.get('to'))).filter(i => !i.is_promo);
+  const custs = new Map((await all(env, 'SELECT id, name, il, ilce, brand_id, is_official, official_title FROM customers')).map(c => [c.id, c]));
+  const isCo = c => !!c && (COMPANY_RE.test(c.name || '') || COMPANY_RE.test(c.official_title || '')); // unvanında Ltd/Şti/San./Tic. vb. geçenler
+  const amt = l => vat === 'excl' ? (l.line_net || 0) : (l.line_net || 0) + (l.line_vat || 0);
+  const meters = l => l.is_band ? (l.band_meters || (l.unit === 'Metre' ? Number(l.qty) || 0 : 0)) : 0;
+  const prods = new Map();
+  const add = (o, k, init) => o[k] ||= init();
+  for (const inv of sales) for (const l of inv.lines) {
+    if (!l.product_id || (pid && l.product_id !== pid)) continue;
+    const P = prods.get(l.product_id) || { id: l.product_id, name: l.pname, mfr: l.mfr, category: l.category, subcategory: l.subcategory, is_band: !!l.is_band, qty: 0, meters: 0, total: 0, orders: new Set(), custs: {}, co_meters: 0, co_qty: 0, co_total: 0, ils: {}, brands: {}, variants: {}, months: {}, last: null };
+    prods.set(l.product_id, P);
+    const q1 = l.unit === 'Metre' ? 0 : Number(l.qty) || 0, m1 = meters(l), a1 = amt(l), c = custs.get(inv.customer_id);
+    P.qty += q1; P.meters += m1; P.total += a1; P.orders.add(inv.id); if (!P.last || inv.date > P.last) P.last = inv.date;
+    if (isCo(c)) { P.co_qty += q1; P.co_meters += m1; P.co_total += a1; }
+    if (!pid) { if (inv.customer_id) add(P.custs, inv.customer_id, () => 0); continue; }
+    const ck = inv.customer_id || 'anon';
+    const C = add(P.custs, ck, () => ({ id: inv.customer_id || null, name: c ? c.name : 'Mağaza (isimsiz)', il: c?.il || '', ilce: c?.ilce || '', brand: inv.brand_id, company: isCo(c), qty: 0, meters: 0, total: 0, orders: 0, last: null }));
+    C.qty += q1; C.meters += m1; C.total += a1; C.orders++; if (!C.last || inv.date > C.last) C.last = inv.date;
+    const I = add(P.ils, c?.il || 'Belirtilmemiş', () => ({ qty: 0, meters: 0, total: 0 })); I.qty += q1; I.meters += m1; I.total += a1;
+    const B = add(P.brands, inv.brand_id, () => ({ qty: 0, meters: 0, total: 0 })); B.qty += q1; B.meters += m1; B.total += a1;
+    const vk = shortName({ name: l.pname, mfr: l.mfr, category: l.category, subcategory: l.subcategory, is_band: l.is_band }, { diameter: l.vdia, thickness: l.vthick, teeth: l.vteeth, width: l.vwidth, tpi: l.vtpi }, { withTpi: true }) || l.vlabel || '—';
+    const V = add(P.variants, vk, () => ({ qty: 0, meters: 0, total: 0 })); V.qty += q1; V.meters += m1; V.total += a1;
+    const M = add(P.months, inv.date.slice(0, 7), () => ({ qty: 0, meters: 0, total: 0 })); M.qty += q1; M.meters += m1; M.total += a1;
+  }
+  const fin = P => { const o = { ...P, orders: P.orders.size, customers: Object.keys(P.custs).length, qty: r2(P.qty), meters: r2(P.meters), total: r2(P.total), co_meters: r2(P.co_meters), co_qty: r2(P.co_qty), co_total: r2(P.co_total) }; delete o.custs; return o; };
+  if (!pid) {
+    const list = [...prods.values()].map(P => { const o = fin(P); delete o.ils; delete o.brands; delete o.variants; delete o.months; return o; }).sort((a, b) => b.total - a.total);
+    const sum = list.reduce((a, x) => ({ qty: a.qty + x.qty, meters: a.meters + x.meters, total: a.total + x.total, co_meters: a.co_meters + x.co_meters }), { qty: 0, meters: 0, total: 0, co_meters: 0 });
+    return { vat, products: list, summary: { products: list.length, qty: r2(sum.qty), meters: r2(sum.meters), total: r2(sum.total), co_meters: r2(sum.co_meters) } };
+  }
+  const P = prods.get(pid); const prod = await first(env, 'SELECT * FROM products WHERE id=?', pid);
+  if (!P) return { vat, product: prod, empty: true };
+  const o = fin(P);
+  const rnd = x => Object.fromEntries(Object.entries(x).map(([k, v]) => [k, { qty: r2(v.qty), meters: r2(v.meters), total: r2(v.total) }]));
+  o.customers_list = Object.values(P.custs).map(c => ({ ...c, qty: r2(c.qty), meters: r2(c.meters), total: r2(c.total) })).sort((a, b) => b.total - a.total);
+  o.ils = rnd(P.ils); o.brands = rnd(P.brands); o.variants = rnd(P.variants); o.months = rnd(P.months);
+  return { vat, product: prod, report: o };
+}
+
 // ---------------- Müşteri agregaları ve segmentler ----------------
 const DAY = 864e5;
 function daysBetween(a, b) { return Math.round((new Date(b) - new Date(a)) / DAY); }
@@ -433,8 +482,8 @@ export const SEGMENT_HELP = R => ({
 });
 
 async function customerAggregates(env, brand, settings) {
-  const custs = await all(env, 'SELECT * FROM customers WHERE brand_id=?', brand);
-  const all0 = await loadSales(env, [brand]); const sales = all0;
+  const custs = brand === 'all' ? await all(env, 'SELECT * FROM customers') : await all(env, 'SELECT * FROM customers WHERE brand_id=?', brand);
+  const all0 = await loadSales(env, brandFilter(brand)); const sales = all0;
   const R = { ...DEFAULT_SETTINGS.segment_rules, ...(settings.segment_rules || {}) };
   const today = new Date().toISOString().slice(0, 10);
   const map = new Map(custs.map(c => [c.id, { ...c, order_count: 0, total: 0, net: 0, first_order: null, last_order: null, dates: [], sources: {}, payments: {}, products: {}, categories: {} }]));
@@ -702,6 +751,7 @@ async function api(req, env, url) {
       await run(env, 'DELETE FROM variants WHERE product_id=?', id); await run(env, 'DELETE FROM products WHERE id=?', id); return json({ ok: true });
     }
   }
+  if (p === '/products/report') return json(await productReport(env, q));
   if (p === '/products/import' && m === 'POST') {
     const { rows } = await body(req); // [{name, mfr, category, subcategory, variant, is_band, description}]
     if (!Array.isArray(rows) || !rows.length) return err('İçe aktarılacak satır yok.');
@@ -1013,6 +1063,16 @@ async function api(req, env, url) {
   return err('Bulunamadı: ' + p, 404);
 }
 
+// Varyant adı "Ø125 × 0,7 × 22 · Z160" / "Ø80 x 0.3 x 22" ise boş kalan çap/kalınlık/delik/diş alanlarını doldurur
+function fillFromLabel(v) {
+  const num = x => { const n = parseFloat(String(x).replace(',', '.')); return isFinite(n) ? n : null; };
+  const m = String(v.label || '').match(/^Ø\s*([\d.,]+)\s*[x×*]\s*([\d.,]+)(?:\s*[x×*]\s*([\d.,\-]+))?(?:\s*·?\s*Z\s*(\d+))?/i);
+  if (!m) return v;
+  if (v.diameter == null || v.diameter === '') v.diameter = num(m[1]);
+  if (m[3] != null) { if (v.thickness == null || v.thickness === '') v.thickness = num(m[2]); if (!v.bore) v.bore = m[3].replace(',', '.'); }
+  if (m[4] && (v.teeth == null || v.teeth === '')) v.teeth = Number(m[4]);
+  return v;
+}
 async function saveVariants(env, pid, variants) {
   if (!Array.isArray(variants)) return;
   const keep = variants.filter(v => v.id).map(v => Number(v.id));
@@ -1024,6 +1084,7 @@ async function saveVariants(env, pid, variants) {
   let i = 0;
   for (const v of variants) {
     if (!v.label) continue;
+    fillFromLabel(v);
     const vals = [v.label, v.diameter || null, v.thickness || null, v.bore || null, v.teeth || null, v.width || null, v.tpi || null, v.length || null, i++];
     if (v.id) await run(env, 'UPDATE variants SET label=?,diameter=?,thickness=?,bore=?,teeth=?,width=?,tpi=?,length=?,sort=?,active=1 WHERE id=? AND product_id=?', ...vals, v.id, pid);
     else await run(env, 'INSERT INTO variants (label,diameter,thickness,bore,teeth,width,tpi,length,sort,product_id) VALUES (?,?,?,?,?,?,?,?,?,?)', ...vals, pid);

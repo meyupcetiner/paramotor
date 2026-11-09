@@ -120,8 +120,9 @@ export function matchItem(item, catalog) {
     if (/golden/.test(pname) && !/goldenline/.test(t)) s -= 30;
     if (!words.includes('pro') && /\bpro\b/.test(pname)) s -= 3; if (!words.includes('vario') && /vario/.test(pname)) s -= 3;
     if (dims.diameter != null) { if (eqNum(v.diameter, dims.diameter, 0.5)) { s += 40; why.push('çap'); } else if (v.diameter != null) s -= 45; else s -= 20; }
-    if (dims.teeth != null) { if (v.teeth != null && Number(v.teeth) === Number(dims.teeth)) { s += 25; why.push('diş'); } else if (v.teeth != null) s -= 20; }
-    if (dims.thickness != null) { if (eqNum(v.thickness, dims.thickness, 0.051)) { s += isBand ? 22 : 12; why.push('kalınlık'); } else if (v.thickness != null) s -= isBand ? 16 : 8; } // şeritte kalınlık TPI'dan önemli
+    const isFreze = /freze/i.test(p.name); // frezede kalınlık dişten önemli
+    if (dims.teeth != null) { if (v.teeth != null && Number(v.teeth) === Number(dims.teeth)) { s += isFreze ? 6 : 25; why.push('diş'); } else if (v.teeth != null) s -= isFreze ? 4 : 20; }
+    if (dims.thickness != null) { if (eqNum(v.thickness, dims.thickness, 0.051)) { s += isBand ? 22 : isFreze ? 30 : 12; why.push('kalınlık'); } else if (v.thickness != null) s -= isBand ? 16 : isFreze ? 25 : 8; } // şeritte kalınlık TPI'dan önemli
     if (dims.bore != null && v.bore) { if (String(v.bore).split('-').some(b => eqNum(b, String(dims.bore).replace(',', '.'), 0.2))) s += 5; else s -= 3; }
     if (dims.width != null) { if (eqNum(v.width, dims.width, 0.5)) { s += 30; why.push('genişlik'); } else if (v.width != null) s -= 40; else s -= 15; }
     if (dims.tpi != null && v.tpi) { if (normTpi(v.tpi) === normTpi(dims.tpi)) { s += 8; why.push('TPI'); } else { const tv = x => { const ns = String(x).split('/').map(Number).filter(isFinite); return ns.length ? ns.reduce((a, b) => a + b) / ns.length : null; }; const a1 = tv(v.tpi), a2 = tv(dims.tpi); s -= a1 != null && a2 != null ? Math.min(6, Math.abs(a1 - a2) * 0.6) : 6; } } // en yakın diş
@@ -146,7 +147,7 @@ export function matchItem(item, catalog) {
   else if (tpiOverride && second && sameSize(best, second)) { /* sadece TPI farkı: uyarı yok */ }
   else if (second && best.s - second.s < 8 && !(!brand && best.v.p.subcategory === 'Karbon' && sameSpec(best, second))) flags.push(brand ? 'Birden fazla varyant benzer; doğru olanı kontrol edin.' : 'Marka/varyant net değil; önerilen ürünü kontrol edin.');
   if (kind === 'serit' && !dims.length_mm && best && best.v.p.is_band) flags.push('Şerit boyu (mm) mesajda bulunamadı.');
-  if (best && !best.v.p.is_band && dims.teeth != null && best.v.teeth != null && Number(best.v.teeth) !== Number(dims.teeth)) flags.push('Bu diş sayısı katalogda yok, en yakını önerildi.');
+  if (best && !best.v.p.is_band && !/freze/i.test(best.v.p.name) && dims.teeth != null && best.v.teeth != null && Number(best.v.teeth) !== Number(dims.teeth)) flags.push('Bu diş sayısı katalogda yok, en yakını önerildi.');
   const confident = !!best && best.s >= 35 && flags.length === 0;
   return {
     tpi_override: tpiOverride,

@@ -25,6 +25,7 @@ export function shortName(p, v = {}, opt = {}) {
     return [brand, t, size, tpi].filter(Boolean).join(' ');
   }
   if (/dry\s*cut/i.test(name)) return [mfr, /paslanmaz/i.test(name) ? 'Paslanmaz Drycut' : 'Drycut', v.diameter ? `${n(v.diameter)}x${v.teeth || ''}`.replace(/x$/, '') : ''].filter(Boolean).join(' ');
+  if (v.diameter && /freze/i.test(name)) return [mfr, 'Freze', [n(v.diameter), n(v.thickness)].filter(Boolean).join('x')].filter(Boolean).join(' '); // frezede başlık kalınlık
   if (v.diameter) {
     const t = /goldenline/i.test(name) ? (/oluklu/i.test(name) ? 'Goldenline Oluklu' : 'Goldenline') : /kurt/i.test(name) ? 'Kurt Diş' : /oluklu/i.test(name) ? 'Oluklu' : /ağaç|atlamal/i.test(name) ? 'Atlamalı' : /çizici/i.test(name) ? 'Çizici' : /kuyumcu/i.test(name) ? 'Kuyumcu' : /freze/i.test(name) ? 'Freze' : /portatif/i.test(name) ? 'Portatif' : /cermet/i.test(name) ? 'Cermet' : /friksiyon/i.test(name) ? 'Friksiyon' : /white/i.test(name) ? 'White' : /antifric/i.test(name) ? 'Antifric' : /tialn/i.test(name) ? 'TiAlN' : /\btin\b/i.test(name) ? 'TiN' : /makine testeresi/i.test(name) ? 'GF Makine' : (CIRC_T[p.subcategory] || '');
     // Onci ve Kronberg'de aynı çap/dişte ince-kalın versiyon olabilir: kalınlık da yazılır

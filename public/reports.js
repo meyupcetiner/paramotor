@@ -180,3 +180,67 @@ export async function expensesPage(ctx) {
   $$('tr[data-id]', el).forEach(tr => tr.onclick = () => open(d.expenses.find(x => x.id === Number(tr.dataset.id))));
   if (query.get('yeni')) { const q = new URLSearchParams(query); q.delete('yeni'); history.replaceState(null, '', ctx.base + 'giderler' + (q.toString() ? '?' + q : '')); query.delete('yeni'); open(); }
 }
+
+// ---------- Genel muhasebe: ürün raporları (düzenleme yok, sadece satış verisi) ----------
+const mtr = v => v ? `${dec1(v)} m` : '—';
+export async function productReportPage(ctx, pid) {
+  const { el, query } = ctx;
+  const [from, to] = readRange(query);
+  const vat = vatMode(query);
+  const baseHash = ctx.base + (pid ? 'urun/' + pid : 'urunler');
+  const brandName = id => (S.boot.brands.find(b => b.id === id) || {}).name || id;
+  if (!pid) {
+    setTitle('Ürün Raporları');
+    const r = await api(`/products/report?brand=all&from=${from}&to=${to}&vat=${vat}`);
+    const cat = query.get('cat') || '', qq = fold0(query.get('q') || '');
+    const cats = [...new Set(r.products.map(p => p.subcategory ? `${p.category} / ${p.subcategory}` : p.category).filter(Boolean))].sort();
+    const list = r.products.filter(p => (!cat || `${p.category} / ${p.subcategory}` === cat || p.category === cat) && (!qq || fold0(`${p.name} ${p.mfr || ''} ${p.subcategory || ''}`).includes(qq)));
+    const S2 = list.reduce((a, p) => ({ qty: a.qty + p.qty, m: a.m + p.meters, t: a.t + p.total, cm: a.cm + p.co_meters, ct: a.ct + p.co_total }), { qty: 0, m: 0, t: 0, cm: 0, ct: 0 });
+    el.innerHTML = `${dateBar(query, vatToggle(vat))}
+    <div class="grid4"><div class="card kpi"><div class="t">Satılan ürün çeşidi</div><div class="v">${int(list.length)}</div></div>
+      <div class="card kpi"><div class="t">Toplam ciro</div><div class="v">${money(S2.t)}</div><div class="d muted">şirketlere ${money(S2.ct)}</div></div>
+      <div class="card kpi"><div class="t">Satılan adet</div><div class="v">${int(S2.qty)}</div></div>
+      <div class="card kpi"><div class="t">Şerit metrajı</div><div class="v">${mtr(S2.m)}</div><div class="d muted">şirketlere ${mtr(S2.cm)}${S2.m ? ` · %${Math.round(S2.cm / S2.m * 100)}` : ''}</div></div></div>
+    <div class="toolbar"><div class="searchbar"><input id="pq" placeholder="Ürün ara…" value="${esc(query.get('q') || '')}">${icon('search')}</div>
+      <select class="in" id="pc" style="width:auto;height:46px;border-radius:999px"><option value="">Tüm kategoriler</option>${cats.map(c => `<option ${c === cat ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></div>
+    <div class="tbl-wrap"><table class="tbl list"><thead><tr><th>Ürün</th><th class="r">Adet</th><th class="r">Metre</th><th class="r">Sipariş</th><th class="r">Müşteri</th><th class="r">Şirketlere</th><th>Son satış</th><th class="r">Ciro</th></tr></thead><tbody>
+    ${list.map(p => `<tr class="click" data-id="${p.id}"><td><div class="t-title">${esc(p.name)}</div><div class="t-sub">${esc([p.mfr, p.subcategory || p.category].filter(Boolean).join(' · '))}</div></td><td class="r">${p.qty ? int(p.qty) : '—'}</td><td class="r">${p.is_band ? mtr(p.meters) : '—'}</td><td class="r">${int(p.orders)}</td><td class="r">${int(p.customers)}</td><td class="r">${p.is_band ? mtr(p.co_meters) : (p.co_qty ? int(p.co_qty) + ' ad.' : '—')}</td><td>${dmy(p.last)}</td><td class="r">${moneyHtml(p.total)}</td></tr>`).join('') || '<tr><td colspan="8"><div class="empty">Bu tarih aralığında satış yok.</div></td></tr>'}
+    </tbody></table></div>
+    <p class="muted small">Şirket: adında ya da resmi unvanında Ltd, Şti, San., Tic. gibi ifadeler geçen müşteriler. Ürün ekleme/düzenleme marka panellerindeki Ürünler sayfasından yapılır; ürünler tüm markalarda ortaktır.</p>`;
+    bindDateBar(el, query, baseHash); bindVat(el, query, baseHash);
+    const setQ = (k, v) => { const q = new URLSearchParams(query); if (v) q.set(k, v); else q.delete(k); location.hash = baseHash + '?' + q; };
+    let tm; $('#pq', el).oninput = e => { clearTimeout(tm); tm = setTimeout(() => setQ('q', e.target.value.trim()), 400); };
+    $('#pc', el).onchange = e => setQ('cat', e.target.value);
+    const keep = new URLSearchParams(query); keep.delete('q'); keep.delete('cat');
+    $$('tr[data-id]', el).forEach(tr => tr.onclick = () => { location.hash = `${ctx.base}urun/${tr.dataset.id}?${keep}`; });
+    return;
+  }
+  const r = await api(`/products/report?brand=all&product=${pid}&from=${from}&to=${to}&vat=${vat}`);
+  const p = r.product || {}, R = r.report;
+  setTitle(`<span class="crumb"><a href="${ctx.base}urunler?${new URLSearchParams([...query].filter(([k]) => ['p', 'from', 'to', 'vat'].includes(k)))}">Ürün Raporları</a> › </span>${esc(p.name || 'Ürün')}`);
+  if (!R) { el.innerHTML = `${dateBar(query, vatToggle(vat))}<div class="empty">Bu tarih aralığında bu ürünün satışı yok.</div>`; bindDateBar(el, query, baseHash); bindVat(el, query, baseHash); return; }
+  const band = R.is_band, val = x => band ? x.meters : x.total, vfmt = band ? (v => `${dec1(v)} m`) : money;
+  const top = R.customers_list.slice(0, 30);
+  const ils = Object.entries(R.ils).sort((a, b) => val(b[1]) - val(a[1])).slice(0, 12);
+  const vars = Object.entries(R.variants).sort((a, b) => b[1].total - a[1].total);
+  const months = Object.keys(R.months).sort();
+  const coN = R.customers_list.filter(c => c.company).length;
+  el.innerHTML = `${dateBar(query, vatToggle(vat))}
+  <div class="grid4"><div class="card kpi"><div class="t">Ciro</div><div class="v">${money(R.total)}</div><div class="d muted">${int(R.orders)} sipariş · ${int(R.customers_list.length)} müşteri</div></div>
+    <div class="card kpi"><div class="t">${band ? 'Satılan metraj' : 'Satılan adet'}</div><div class="v">${band ? mtr(R.meters) : int(R.qty)}</div>${band && R.qty ? `<div class="d muted">${int(R.qty)} adet</div>` : ''}</div>
+    <div class="card kpi"><div class="t">Şirketlere</div><div class="v">${band ? mtr(R.co_meters) : int(R.co_qty) + ' ad.'}</div><div class="d muted">${coN} şirket · ${money(R.co_total)}</div></div>
+    <div class="card kpi"><div class="t">Bireysel</div><div class="v">${band ? mtr(R.meters - R.co_meters) : int(R.qty - R.co_qty) + ' ad.'}</div><div class="d muted">${money(R.total - R.co_total)}</div></div></div>
+  <div class="rgrid">
+    <div class="card c8"><div class="hd"><h3>En çok alan müşteriler</h3><span class="sp"></span><button class="btn sm" id="xc">${icon('download')} Excel</button></div><div class="tbl-wrap"><table class="tbl compact"><thead><tr><th>Müşteri</th><th>Marka</th><th>Konum</th><th class="r">${band ? 'Metre' : 'Adet'}</th><th class="r">Sipariş</th><th>Son</th><th class="r">Tutar</th></tr></thead><tbody>
+      ${top.map(c => `<tr ${c.id ? `class="click" data-c="${c.id}"` : ''}><td><b>${esc(c.name || '—')}</b>${c.company ? ' <span class="pill soft">ŞİRKET</span>' : ''}</td><td class="t-sub">${esc(brandName(c.brand))}</td><td class="t-sub">${esc([c.ilce, c.il].filter(Boolean).join(' / ') || '—')}</td><td class="r">${band ? mtr(c.meters) : int(c.qty)}</td><td class="r">${int(c.orders)}</td><td>${dmy(c.last)}</td><td class="r">${moneyHtml(c.total)}</td></tr>`).join('')}
+    </tbody></table></div></div>
+    <div class="card c4"><div class="hd"><h3>Nereye satıldı</h3><span class="muted small">${band ? 'metre' : 'ciro'}</span></div><div class="bd">${hbars(ils.map(([k, v]) => ({ label: k, value: val(v), sub: band ? money(v.total) : `${int(v.qty)} adet` })), { fmt: vfmt })}</div></div>
+    <div class="card c6"><div class="hd"><h3>Ölçü bazında</h3></div><div class="tbl-wrap"><table class="tbl compact"><thead><tr><th>Ölçü</th><th class="r">Adet</th>${band ? '<th class="r">Metre</th>' : ''}<th class="r">Tutar</th></tr></thead><tbody>${vars.map(([k, v]) => `<tr><td>${esc(k)}</td><td class="r">${int(v.qty)}</td>${band ? `<td class="r">${mtr(v.meters)}</td>` : ''}<td class="r">${moneyHtml(v.total)}</td></tr>`).join('')}</tbody></table></div></div>
+    <div class="card c6"><div class="hd"><h3>Marka bazında</h3></div><div class="bd">${hbars(Object.entries(R.brands).map(([k, v]) => ({ label: brandName(k), value: val(v), sub: band ? money(v.total) : `${int(v.qty)} adet` })), { fmt: vfmt })}</div></div>
+    ${months.length > 1 ? `<div class="card c12"><div class="hd"><h3>Aylık ${band ? 'metraj' : 'satış'}</h3></div><div class="bd">${vbars(months.map(m => m.slice(5) + '.' + m.slice(2, 4)), [{ name: band ? 'Metre' : 'Ciro', color: 'var(--accent)', values: months.map(m => val(R.months[m])) }], { fmt: band ? (v => dec1(v)) : short })}</div></div>` : ''}
+  </div>`;
+  bindDateBar(el, query, baseHash); bindVat(el, query, baseHash);
+  $$('tr[data-c]', el).forEach(tr => tr.onclick = () => { location.hash = `${ctx.base}musteri/${tr.dataset.c}`; });
+  $('#xc', el).onclick = () => exportXLS(`urun-${p.id}-${today()}`, [{ name: 'Müşteriler', headers: ['Müşteri', 'Şirket', 'Marka', 'İl', 'İlçe', 'Adet', 'Metre', 'Sipariş', 'Son sipariş', 'Tutar'], rows: R.customers_list.map(c => [c.name, c.company ? 'Evet' : 'Hayır', brandName(c.brand), c.il, c.ilce, c.qty, c.meters, c.orders, dmy(c.last), c.total]) }]);
+}
+const fold0 = s => String(s || '').toLocaleLowerCase('tr').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/ı/g, 'i');

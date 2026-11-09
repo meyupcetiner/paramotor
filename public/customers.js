@@ -6,8 +6,9 @@ const SEG_COLORS = { 'Yeni': 'var(--c2)', 'Sadık': 'var(--c1)', 'Tekrar Potansi
 const segPill = s => `<span class="pill" style="background:${SEG_COLORS[s] || '#777'};color:#111">${esc(s)}</span>`;
 const KEYS = ['q', 'il', 'ilce', 'min_total', 'max_total', 'threshold', 'threshold_dir', 'min_basket', 'orders', 'segment', 'source', 'payment', 'product', 'category', 'first_from', 'first_to', 'last_from', 'last_to', 'official', 'sort', 'dir'];
 
+const brandPill = id => { const x = S.boot.brands.find(b => b.id === id); return x ? `<span class="pill" style="background:${x.color};color:#fff">${esc(x.name)}</span>` : ''; };
 export async function customersPage(ctx) {
-  const { brand, el, query } = ctx;
+  const { el, query } = ctx; const brand = ctx.brand || 'all', base = ctx.base, gen = !ctx.brand;
   setTitle('Müşteriler');
   await loadCatalog();
   const qs = new URLSearchParams(); for (const k of KEYS) if (query.get(k)) qs.set(k, query.get(k)); qs.set('brand', brand);
@@ -46,7 +47,7 @@ export async function customersPage(ctx) {
     <div class="card c4 kpi"><div class="t">Filtrelenen müşteri</div><div class="v">${int(d.summary.count)}</div><div class="d muted">${int(d.summary.orders)} sipariş · ${money(d.summary.total)}</div><div class="d muted">Ortalama müşteri değeri: ${money(d.summary.count ? d.summary.total / d.summary.count : 0)}</div>
       <div class="row wrap" style="margin-top:14px"><button class="btn sm" id="xcsv">${icon('download')} CSV</button><button class="btn sm" id="xxls">${icon('download')} Excel</button><button class="btn sm" id="cp">${icon('copy')} Telefonları kopyala</button></div></div></div>
   <div class="tbl-wrap"><table class="tbl list"><thead><tr>${sortTh('name', 'Unvanı')}<th>Konum</th>${sortTh('order_count', 'Sipariş', 'r')}${sortTh('last_order', 'Son sipariş')}${sortTh('avg_basket', 'Ort. sepet', 'r')}${sortTh('total', 'Toplam sipariş', 'r')}</tr></thead><tbody>
-  ${d.customers.slice((page - 1) * per, page * per).map(c => { const s = srcById(c.main_source); return `<tr class="click" data-id="${c.id}"><td><div class="row" style="gap:12px"><span class="avatar" style="width:40px;height:40px;flex:none">${icon(c.is_official ? 'building' : 'user')}</span><div><div class="t-title">${esc(c.name || '—')}</div><div class="t-sub">${esc(phoneFmt(c.phone))}</div><div class="tags">${segPill(c.segment)}${s ? pill(s.name, s.color) : ''}${c.is_official ? '<span class="pill soft">RESMİ</span>' : ''}</div></div></div></td>
+  ${d.customers.slice((page - 1) * per, page * per).map(c => { const s = srcById(c.main_source); return `<tr class="click" data-id="${c.id}"><td><div class="row" style="gap:12px"><span class="avatar" style="width:40px;height:40px;flex:none">${icon(c.is_official ? 'building' : 'user')}</span><div><div class="t-title">${esc(c.name || '—')}</div><div class="t-sub">${esc(phoneFmt(c.phone))}</div><div class="tags">${segPill(c.segment)}${s ? pill(s.name, s.color) : ''}${c.is_official ? '<span class="pill soft">RESMİ</span>' : ''}${gen ? brandPill(c.brand_id) : ''}</div></div></div></td>
     <td class="t-sub">${esc([c.ilce, c.il].filter(Boolean).join(' / ') || '—')}</td><td class="r">${int(c.order_count)}</td><td>${dmy(c.last_order)}${c.days_since != null ? `<div class="t-sub">${c.days_since} gün önce</div>` : ''}</td><td class="r">${moneyHtml(c.avg_basket)}</td><td class="r">${moneyHtml(c.total)}</td></tr>`; }).join('') || '<tr><td colspan="6"><div class="empty">Müşteri bulunamadı. Müşteriler satış girildikçe telefon numarasına göre otomatik oluşur.</div></td></tr>'}
   </tbody></table></div>
   <div class="footbar"><div class="pager"><button data-pg="${page - 1}" ${page <= 1 ? 'disabled' : ''}>‹</button><button class="on">${page} / ${pages}</button><button data-pg="${page + 1}" ${page >= pages ? 'disabled' : ''}>›</button></div><span class="sp"></span><span class="sumtext">${int(d.summary.count)} Kayıt &nbsp; Toplam sipariş <b>${money(d.summary.total)}</b></span></div>`;
@@ -55,23 +56,23 @@ export async function customersPage(ctx) {
   $('#ilbars', el).innerHTML = hbars(ils.map(([k, v]) => ({ label: k, value: v.total, sub: `${v.customers} müşteri`, key: k })));
   $$('#ilbars .hbar', el).forEach(b => b.onclick = () => setQ('il', b.dataset.k === 'Belirtilmemiş' ? '' : b.dataset.k));
 
-  function setQ(k, v) { const q = new URLSearchParams(query); if (v) q.set(k, v); else q.delete(k); q.delete('page'); q.delete('seg_id'); location.hash = `#/b/${brand}/musteriler?${q}`; }
+  function setQ(k, v) { const q = new URLSearchParams(query); if (v) q.set(k, v); else q.delete(k); q.delete('page'); q.delete('seg_id'); location.hash = `${base}musteriler?${q}`; }
   $('#fb', el).onclick = () => $('#fp', el).classList.toggle('hidden');
   $('#hl', el).onclick = () => $('#hb', el).classList.toggle('hidden');
   let tm; $('#q', el).oninput = e => { clearTimeout(tm); tm = setTimeout(() => setQ('q', e.target.value.trim()), 350); };
   $$('[data-f]', el).forEach(i => i.onchange = () => setQ(i.dataset.f, i.value.trim()));
   $$('[data-m]', el).forEach(b => b.onclick = () => { const k = b.dataset.m, v = b.dataset.v; const cur = multi(k); const n = cur.includes(v) ? cur.filter(x => x !== v) : [...cur, v]; setQ(k, n.join(',')); });
-  $$('[data-sort]', el).forEach(th => th.onclick = () => { const q = new URLSearchParams(query); const k = th.dataset.sort; q.set('dir', q.get('sort') === k && q.get('dir') !== 'asc' ? 'asc' : 'desc'); q.set('sort', k); location.hash = `#/b/${brand}/musteriler?${q}`; });
-  $$('[data-pg]', el).forEach(b => b.onclick = () => { const q = new URLSearchParams(query); q.set('page', b.dataset.pg); location.hash = `#/b/${brand}/musteriler?${q}`; });
-  $$('tr[data-id]', el).forEach(tr => tr.onclick = () => { location.hash = `#/b/${brand}/musteri/${tr.dataset.id}`; });
-  $('#clr', el).onclick = () => { location.hash = `#/b/${brand}/musteriler`; };
+  $$('[data-sort]', el).forEach(th => th.onclick = () => { const q = new URLSearchParams(query); const k = th.dataset.sort; q.set('dir', q.get('sort') === k && q.get('dir') !== 'asc' ? 'asc' : 'desc'); q.set('sort', k); location.hash = `${base}musteriler?${q}`; });
+  $$('[data-pg]', el).forEach(b => b.onclick = () => { const q = new URLSearchParams(query); q.set('page', b.dataset.pg); location.hash = `${base}musteriler?${q}`; });
+  $$('tr[data-id]', el).forEach(tr => tr.onclick = () => { location.hash = `${base}musteri/${tr.dataset.id}`; });
+  $('#clr', el).onclick = () => { location.hash = `${base}musteriler`; };
   const pq = $('#prodq', el);
   autocomplete(pq, q => { const seen = new Set(); return searchCatalog(q, 80).filter(v => !seen.has(v.p.id) && seen.add(v.p.id)).slice(0, 15).map(v => ({ html: `<b>${esc(v.p.name)}</b> <small>${esc(v.p.subcategory)}</small>`, v })); }, it => setQ('product', it.v.p.id));
   pq.onchange = () => { if (!pq.value.trim()) setQ('product', ''); };
-  $('#saved', el).onchange = e => { const s = saved.find(x => x.id === Number(e.target.value)); if (!s) return; const q = new URLSearchParams(JSON.parse(s.filters || '{}')); q.set('seg_id', s.id); location.hash = `#/b/${brand}/musteriler?${q}`; };
+  $('#saved', el).onchange = e => { const s = saved.find(x => x.id === Number(e.target.value)); if (!s) return; const q = new URLSearchParams(JSON.parse(s.filters || '{}')); q.set('seg_id', s.id); location.hash = `${base}musteriler?${q}`; };
   if (query.get('seg_id')) { const s = saved.find(x => x.id === Number(query.get('seg_id'))); if (s) $('#saved', el).value = s.id; }
   $('#savef', el).onclick = async () => { const name = prompt('Segment adı (ör. "İstanbul 5000₺ üstü tek siparişliler")'); if (!name) return; const f = {}; for (const k of KEYS) if (query.get(k)) f[k] = query.get(k); await api.post('/segments', { brand_id: brand, name, filters: f }); toast('Segment kaydedildi'); customersPage(ctx); };
-  $('#delseg', el)?.addEventListener('click', async () => { if (!(await confirmBox('Kayıtlı segment silinsin mi?'))) return; await api.del('/segments/' + query.get('seg_id')); location.hash = `#/b/${brand}/musteriler`; });
+  $('#delseg', el)?.addEventListener('click', async () => { if (!(await confirmBox('Kayıtlı segment silinsin mi?'))) return; await api.del('/segments/' + query.get('seg_id')); location.hash = `${base}musteriler`; });
   const H = ['Ad Soyad', 'Telefon', 'İl', 'İlçe', 'Adres', 'Segment', 'Sipariş sayısı', 'İlk sipariş', 'Son sipariş', 'Son siparişten beri (gün)', 'Ort. sipariş aralığı (gün)', 'Ortalama sepet', 'Toplam', 'Ana kaynak', 'Ana ödeme', 'En çok aldığı kategori', 'Resmi', 'VKN/TCKN', 'Resmi unvan'];
   const rows = () => d.customers.map(c => [c.name || '', phoneFmt(c.phone), c.il || '', c.ilce || '', c.address || '', c.segment, c.order_count, dmy(c.first_order), dmy(c.last_order), c.days_since ?? '', c.avg_gap ?? '', c.avg_basket, c.total, (srcById(c.main_source) || {}).name || '', (payById(c.main_payment) || {}).name || '', c.top_category || '', c.is_official ? 'Evet' : 'Hayır', c.tax_no || '', c.official_title || '']);
   $('#xcsv', el).onclick = () => exportCSV(`musteriler-${brand}-${today()}`, H, rows());
@@ -80,9 +81,9 @@ export async function customersPage(ctx) {
 }
 
 export async function customerDetail(ctx, id) {
-  const { brand, el } = ctx;
+  const { el } = ctx; const base = ctx.base;
   const d = await api('/customers/' + id); const c = d.customer;
-  setTitle(`<span class="crumb"><a href="#/b/${brand}/musteriler">Müşteriler</a> › </span>${esc(c.name || 'Müşteri')}`);
+  setTitle(`<span class="crumb"><a href="${base}musteriler">Müşteriler</a> › </span>${esc(c.name || 'Müşteri')}`);
   const next = c.avg_gap && c.last_order ? (() => { const x = new Date(c.last_order + 'T12:00:00'); x.setDate(x.getDate() + c.avg_gap); return x.toISOString().slice(0, 10); })() : null;
   const wa = waLink(c.phone);
   el.innerHTML = `<div class="rgrid">
@@ -94,7 +95,7 @@ export async function customerDetail(ctx, id) {
       <label class="chk small"><input type="checkbox" name="is_official" ${c.is_official ? 'checked' : ''}> Resmi satış bilgileri</label>
       <div class="grid2 ${c.is_official ? '' : 'hidden'}" id="off"><label class="field"><span>VKN / TCKN</span><input class="in" name="tax_no" value="${esc(c.tax_no || '')}"></label><label class="field"><span>Vergi dairesi</span><input class="in" name="tax_office" value="${esc(c.tax_office || '')}"></label><label class="field" style="grid-column:1/-1"><span>Resmi unvan</span><input class="in" name="official_title" value="${esc(c.official_title || '')}"></label></div>
       <label class="field"><span>Not</span><textarea class="in" name="note" rows="2">${esc(c.note || '')}</textarea></label>
-      <div class="row wrap"><button class="btn pri sm">Kaydet</button>${wa ? `<a class="btn sm" href="${wa}" target="_blank" rel="noopener">${icon('phone')} WhatsApp</a>` : ''}<a class="btn sm" href="#/b/${brand}/fatura/yeni?customer=${id}" id="newinv">+ Yeni satış</a><span class="sp"></span><button type="button" class="btn sm danger" id="del">${icon('trash')}</button></div>
+      <div class="row wrap"><button class="btn pri sm">Kaydet</button>${wa ? `<a class="btn sm" href="${wa}" target="_blank" rel="noopener">${icon('phone')} WhatsApp</a>` : ''}<a class="btn sm" href="#/b/${c.brand_id}/fatura/yeni?customer=${id}" id="newinv">+ Yeni satış</a><span class="sp"></span><button type="button" class="btn sm danger" id="del">${icon('trash')}</button></div>
     </form></div>
     <div class="c8" style="display:grid;gap:18px;align-content:start">
       <div class="grid4"><div class="card kpi"><div class="t">Toplam sipariş</div><div class="v">${money(c.total)}</div><div class="d muted">${int(c.order_count)} sipariş</div></div><div class="card kpi"><div class="t">Ortalama sepet</div><div class="v">${money(c.avg_basket)}</div></div><div class="card kpi"><div class="t">İlk / son sipariş</div><div class="v" style="font-size:18px">${dmy(c.first_order) || '—'}<br>${dmy(c.last_order) || '—'}</div></div><div class="card kpi"><div class="t">Tekrar sipariş eğilimi</div><div class="v" style="font-size:18px">${c.avg_gap ? `~${c.avg_gap} günde bir` : (c.order_count === 1 ? 'Tek sipariş' : '—')}</div><div class="d muted">${next ? `Beklenen sonraki: ${dmy(next)}` : ''}${c.days_since != null ? ` · son siparişten ${c.days_since} gün` : ''}</div></div></div>
@@ -104,6 +105,6 @@ export async function customerDetail(ctx, id) {
   const f = $('#cf', el); ilIlce(f.il, f.ilce);
   f.is_official.onchange = () => $('#off', el).classList.toggle('hidden', !f.is_official.checked);
   f.onsubmit = async e => { e.preventDefault(); await api.put('/customers/' + id, { name: f.name.value, phone: f.phone.value, address: f.address.value, il: f.il.value, ilce: f.ilce.value, note: f.note.value, is_official: f.is_official.checked, tax_no: f.tax_no.value, tax_office: f.tax_office.value, official_title: f.official_title.value }); toast('Müşteri güncellendi'); };
-  $('#del', el).onclick = async () => { if (!(await confirmBox('Müşteri silinsin mi? (Faturası olan müşteri silinemez.)'))) return; try { await api.del('/customers/' + id); location.hash = `#/b/${brand}/musteriler`; } catch (e) { toast(e.message, true); } };
-  $$('[data-inv]', el).forEach(tr => tr.onclick = () => { location.hash = `#/b/${brand}/fatura/${tr.dataset.inv}`; });
+  $('#del', el).onclick = async () => { if (!(await confirmBox('Müşteri silinsin mi? (Faturası olan müşteri silinemez.)'))) return; try { await api.del('/customers/' + id); location.hash = `${base}musteriler`; } catch (e) { toast(e.message, true); } };
+  $$('[data-inv]', el).forEach(tr => tr.onclick = () => { location.hash = `#/b/${c.brand_id}/fatura/${tr.dataset.inv}`; });
 }

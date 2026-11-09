@@ -48,6 +48,8 @@ async function ensureDB(env) {
   if (!cols.some(c => c.name === 'rep_id')) await env.DB.exec('ALTER TABLE invoices ADD COLUMN rep_id INTEGER;');
   if (!cols.some(c => c.name === 'raw_msg')) await env.DB.exec('ALTER TABLE invoices ADD COLUMN raw_msg TEXT;');
   if (!cols.some(c => c.name === 'is_promo')) await env.DB.exec('ALTER TABLE invoices ADD COLUMN is_promo INTEGER DEFAULT 0;');
+  const ccols = await all(env, "PRAGMA table_info(customers)");
+  if (!ccols.some(c => c.name === 'archived')) await env.DB.exec('ALTER TABLE customers ADD COLUMN archived INTEGER DEFAULT 0;'); // arşivlenen müşterinin faturaları hiçbir hesaba girmez
   // v2 göçü: KDV'siz varsayılan, yeni ödeme yöntemleri, temsilciler, hizmet ürünleri
   const mg = await first(env, "SELECT value FROM settings WHERE key='migr_v2'");
   if (!mg && await first(env, "SELECT COUNT(*) c FROM brands").then(r => r && r.c)) {
@@ -399,7 +401,7 @@ function brandFilter(brand) { return brand && brand !== 'all' ? [brand] : BRANDS
 // Satış verisini (fatura + satır + ürün) belleğe alır; raporlar JS'de hesaplanır.
 async function loadSales(env, brands, from, to) {
   const ph = brands.map(() => '?').join(',');
-  const invs = await all(env, `SELECT * FROM invoices WHERE brand_id IN (${ph}) AND date>=? AND date<=? ORDER BY date, id`, ...brands, from || '0000-01-01', to || '9999-12-31');
+  const invs = await all(env, `SELECT * FROM invoices WHERE brand_id IN (${ph}) AND date>=? AND date<=? AND IFNULL(customer_id,0) NOT IN (SELECT id FROM customers WHERE archived=1) ORDER BY date, id`, ...brands, from || '0000-01-01', to || '9999-12-31');
   if (!invs.length) return [];
   const ids = invs.map(i => i.id);
   const lines = [];
@@ -482,7 +484,7 @@ export const SEGMENT_HELP = R => ({
 });
 
 async function customerAggregates(env, brand, settings) {
-  const custs = brand === 'all' ? await all(env, 'SELECT * FROM customers') : await all(env, 'SELECT * FROM customers WHERE brand_id=?', brand);
+  const custs = brand === 'all' ? await all(env, 'SELECT * FROM customers WHERE IFNULL(archived,0)=0') : await all(env, 'SELECT * FROM customers WHERE brand_id=? AND IFNULL(archived,0)=0', brand);
   const all0 = await loadSales(env, brandFilter(brand)); const sales = all0;
   const R = { ...DEFAULT_SETTINGS.segment_rules, ...(settings.segment_rules || {}) };
   const today = new Date().toISOString().slice(0, 10);
@@ -603,7 +605,7 @@ function shiftPeriod(from, to) {
 async function markFirstOrders(env, invs, brands) {
   // Müşterinin tüm zamanlardaki ilk siparişini bul (yeni vs geri dönen ayrımı)
   const ph = brands.map(() => '?').join(',');
-  const rows = await all(env, `SELECT customer_id, MIN(date || '#' || printf('%010d', id)) f FROM invoices WHERE brand_id IN (${ph}) AND customer_id IS NOT NULL GROUP BY customer_id`, ...brands);
+  const rows = await all(env, `SELECT customer_id, MIN(date || '#' || printf('%010d', id)) f FROM invoices WHERE brand_id IN (${ph}) AND customer_id IS NOT NULL AND IFNULL(customer_id,0) NOT IN (SELECT id FROM customers WHERE archived=1) GROUP BY customer_id`, ...brands);
   const firstId = new Map(rows.map(r => [r.customer_id, Number(r.f.split('#')[1])]));
   for (const i of invs) i._isFirst = !i.customer_id || firstId.get(i.customer_id) === i.id;
 }
@@ -611,7 +613,7 @@ async function markFirstOrders(env, invs, brands) {
 // ---------------- Gelir-Gider ----------------
 async function pnl(env, brand, from, to, settings, vat = 'incl') {
   const brands = brandFilter(brand);
-  const sales = await all(env, `SELECT brand_id, substr(date,1,7) m, SUM(subtotal) net, SUM(total) gross, COUNT(*) n FROM invoices WHERE date>=? AND date<=? AND IFNULL(is_promo,0)=0 GROUP BY brand_id, m`, from, to);
+  const sales = await all(env, `SELECT brand_id, substr(date,1,7) m, SUM(subtotal) net, SUM(total) gross, COUNT(*) n FROM invoices WHERE date>=? AND date<=? AND IFNULL(is_promo,0)=0 AND IFNULL(customer_id,0) NOT IN (SELECT id FROM customers WHERE archived=1) GROUP BY brand_id, m`, from, to);
   const exps = await all(env, 'SELECT * FROM expenses WHERE date>=? AND date<=? ORDER BY date DESC, id DESC', from, to);
   const revByBrand = {}; for (const s of sales) revByBrand[s.brand_id] = (revByBrand[s.brand_id] || 0) + s.gross; // gider payı dağıtımı her zaman brüt ciroya göre
   const totalRev = Object.values(revByBrand).reduce((a, b) => a + b, 0);
@@ -785,12 +787,20 @@ async function api(req, env, url) {
     const f = fold(s); const d = s.replace(/\D/g, '');
     return json(rows.filter(c => fold(c.name).includes(f) || (d.length >= 4 && String(c.phone || '').includes(d))).slice(0, 10));
   }
+  if ((mm = p.match(/^\/customers\/(\d+)\/archive$/)) && m === 'POST') { const b = await body(req); await run(env, 'UPDATE customers SET archived=? WHERE id=?', b.archived ? 1 : 0, Number(mm[1])); return json({ ok: true }); }
+  if (p === '/archive') {
+    const brand = q.get('brand');
+    const cs = await all(env, 'SELECT * FROM customers WHERE archived=1' + (brand && brand !== 'all' ? ' AND brand_id=?' : '') + ' ORDER BY name', ...(brand && brand !== 'all' ? [brand] : []));
+    for (const c of cs) { const r = await first(env, 'SELECT COUNT(*) n, ROUND(SUM(total),2) t, MIN(date) f, MAX(date) l FROM invoices WHERE customer_id=?', c.id); Object.assign(c, { order_count: r.n, total: r.t || 0, first_order: r.f, last_order: r.l }); }
+    return json(cs);
+  }
   if ((mm = p.match(/^\/customers\/(\d+)$/))) {
     const id = Number(mm[1]);
     if (m === 'GET') {
       const c = await first(env, 'SELECT * FROM customers WHERE id=?', id); if (!c) return err('Müşteri bulunamadı.', 404);
       const agg = (await customerAggregates(env, c.brand_id, settings)).find(x => x.id === id);
       const invs = await all(env, 'SELECT * FROM invoices WHERE customer_id=? ORDER BY date DESC, id DESC', id);
+      if (!agg) { const ds = invs.map(i => i.date).sort(); Object.assign(c, { order_count: invs.length, total: r2(invs.reduce((a, i) => a + (i.total || 0), 0)), first_order: ds[0] || null, last_order: ds[ds.length - 1] || null, segment: c.archived ? 'Arşivde' : 'Sipariş yok' }); c.avg_basket = c.order_count ? r2(c.total / c.order_count) : 0; }
       return json({ customer: agg || c, invoices: invs });
     }
     if (m === 'PUT') { const b = await body(req); const np = normalizePhone(b.phone); await run(env, 'UPDATE customers SET name=?,phone=?,address=?,il=?,ilce=?,note=?,is_official=?,tax_no=?,official_title=?,tax_office=?,person_type=? WHERE id=?', b.name || null, np.ok ? np.phone : (b.phone || null), b.address || null, b.il || null, b.ilce || null, b.note || null, b.is_official ? 1 : 0, b.tax_no || null, b.official_title || null, b.tax_office || null, b.person_type || null, id); return json({ ok: true }); }

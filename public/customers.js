@@ -83,7 +83,7 @@ export async function customersPage(ctx) {
 export async function customerDetail(ctx, id) {
   const { el } = ctx; const base = ctx.base;
   const d = await api('/customers/' + id); const c = d.customer;
-  setTitle(`<span class="crumb"><a href="${base}musteriler">Müşteriler</a> › </span>${esc(c.name || 'Müşteri')}`);
+  setTitle(`<span class="crumb"><a href="${base}${c.archived ? 'arsiv' : 'musteriler'}">${c.archived ? 'Arşiv' : 'Müşteriler'}</a> › </span>${esc(c.name || 'Müşteri')}${c.archived ? ' <span class="pill soft">ARŞİVDE</span>' : ''}`);
   const next = c.avg_gap && c.last_order ? (() => { const x = new Date(c.last_order + 'T12:00:00'); x.setDate(x.getDate() + c.avg_gap); return x.toISOString().slice(0, 10); })() : null;
   const wa = waLink(c.phone);
   el.innerHTML = `<div class="rgrid">
@@ -95,7 +95,7 @@ export async function customerDetail(ctx, id) {
       <label class="chk small"><input type="checkbox" name="is_official" ${c.is_official ? 'checked' : ''}> Resmi satış bilgileri</label>
       <div class="grid2 ${c.is_official ? '' : 'hidden'}" id="off"><label class="field"><span>VKN / TCKN</span><input class="in" name="tax_no" value="${esc(c.tax_no || '')}"></label><label class="field"><span>Vergi dairesi</span><input class="in" name="tax_office" value="${esc(c.tax_office || '')}"></label><label class="field" style="grid-column:1/-1"><span>Resmi unvan</span><input class="in" name="official_title" value="${esc(c.official_title || '')}"></label></div>
       <label class="field"><span>Not</span><textarea class="in" name="note" rows="2">${esc(c.note || '')}</textarea></label>
-      <div class="row wrap"><button class="btn pri sm">Kaydet</button>${wa ? `<a class="btn sm" href="${wa}" target="_blank" rel="noopener">${icon('phone')} WhatsApp</a>` : ''}<a class="btn sm" href="#/b/${c.brand_id}/fatura/yeni?customer=${id}" id="newinv">+ Yeni satış</a><span class="sp"></span><button type="button" class="btn sm danger" id="del">${icon('trash')}</button></div>
+      <div class="row wrap"><button class="btn pri sm">Kaydet</button>${wa ? `<a class="btn sm" href="${wa}" target="_blank" rel="noopener">${icon('phone')} WhatsApp</a>` : ''}<a class="btn sm" href="#/b/${c.brand_id}/fatura/yeni?customer=${id}" id="newinv">+ Yeni satış</a><button type="button" class="btn sm" id="arc">${c.archived ? 'Arşivden çıkar' : 'Arşivle'}</button><span class="sp"></span><button type="button" class="btn sm danger" id="del">${icon('trash')}</button></div>
     </form></div>
     <div class="c8" style="display:grid;gap:18px;align-content:start">
       <div class="grid4"><div class="card kpi"><div class="t">Toplam sipariş</div><div class="v">${money(c.total)}</div><div class="d muted">${int(c.order_count)} sipariş</div></div><div class="card kpi"><div class="t">Ortalama sepet</div><div class="v">${money(c.avg_basket)}</div></div><div class="card kpi"><div class="t">İlk / son sipariş</div><div class="v" style="font-size:18px">${dmy(c.first_order) || '—'}<br>${dmy(c.last_order) || '—'}</div></div><div class="card kpi"><div class="t">Tekrar sipariş eğilimi</div><div class="v" style="font-size:18px">${c.avg_gap ? `~${c.avg_gap} günde bir` : (c.order_count === 1 ? 'Tek sipariş' : '—')}</div><div class="d muted">${next ? `Beklenen sonraki: ${dmy(next)}` : ''}${c.days_since != null ? ` · son siparişten ${c.days_since} gün` : ''}</div></div></div>
@@ -107,4 +107,18 @@ export async function customerDetail(ctx, id) {
   f.onsubmit = async e => { e.preventDefault(); await api.put('/customers/' + id, { name: f.name.value, phone: f.phone.value, address: f.address.value, il: f.il.value, ilce: f.ilce.value, note: f.note.value, is_official: f.is_official.checked, tax_no: f.tax_no.value, tax_office: f.tax_office.value, official_title: f.official_title.value }); toast('Müşteri güncellendi'); };
   $('#del', el).onclick = async () => { if (!(await confirmBox('Müşteri silinsin mi? (Faturası olan müşteri silinemez.)'))) return; try { await api.del('/customers/' + id); location.hash = `${base}musteriler`; } catch (e) { toast(e.message, true); } };
   $$('[data-inv]', el).forEach(tr => tr.onclick = () => { location.hash = `#/b/${c.brand_id}/fatura/${tr.dataset.inv}`; });
+  $('#arc', el).onclick = async () => { const on = !c.archived; if (on && !(await confirmBox('Müşteri ve tüm faturaları arşive taşınsın mı? Hiçbir rapora, listeye ve hesaplamaya dahil edilmez.'))) return; await api.post(`/customers/${id}/archive`, { archived: on }); toast(on ? 'Arşive taşındı' : 'Arşivden çıkarıldı'); location.hash = on ? `#/b/${c.brand_id}/arsiv` : `${base}musteri/${id}`; if (!on) customerDetail(ctx, id); };
+}
+
+// Arşiv: arşivlenen müşteriler ve faturaları burada bekler; hiçbir hesaplamaya girmez
+export async function archivePage(ctx) {
+  const { brand, el } = ctx;
+  setTitle('Arşiv');
+  const list = await api('/archive?brand=' + brand);
+  el.innerHTML = `<p class="muted small" style="margin:0 0 14px">Arşivdeki müşterilerin faturaları satış listesine, raporlara, müşteri segmentlerine ve gelir-gidere dahil edilmez. Müşteriyi açıp "Arşivden çıkar" ile geri alabilirsin.</p>
+  <div class="tbl-wrap"><table class="tbl list"><thead><tr><th>Unvanı</th><th>Konum</th><th class="r">Fatura</th><th>Tarih aralığı</th><th class="r">Toplam</th><th></th></tr></thead><tbody>
+  ${list.map(c => `<tr class="click" data-id="${c.id}"><td><div class="t-title">${esc(c.name || '—')}</div><div class="t-sub">${esc(phoneFmt(c.phone))}</div></td><td class="t-sub">${esc([c.ilce, c.il].filter(Boolean).join(' / ') || '—')}</td><td class="r">${int(c.order_count)}</td><td class="t-sub">${dmy(c.first_order) || '—'} – ${dmy(c.last_order) || '—'}</td><td class="r">${moneyHtml(c.total)}</td><td class="r"><button class="btn sm" data-un="${c.id}">Arşivden çıkar</button></td></tr>`).join('') || '<tr><td colspan="6"><div class="empty">Arşiv boş. Müşteri detayındaki "Arşivle" ile buraya taşıyabilirsin.</div></td></tr>'}
+  </tbody></table></div>`;
+  $$('tr[data-id]', el).forEach(tr => tr.onclick = e => { if (e.target.closest('[data-un]')) return; location.hash = `${ctx.base}musteri/${tr.dataset.id}`; });
+  $$('[data-un]', el).forEach(b => b.onclick = async () => { await api.post(`/customers/${b.dataset.un}/archive`, { archived: false }); toast('Arşivden çıkarıldı'); archivePage(ctx); });
 }

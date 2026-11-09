@@ -2,7 +2,7 @@
 import { S, api, esc, icon, toast, money, int, today, rangePreset } from './core.js';
 import { invoicesPage, invoiceForm } from './invoices.js';
 import { autoPage } from './auto.js';
-import { customersPage, customerDetail } from './customers.js';
+import { customersPage, customerDetail, archivePage } from './customers.js';
 import { reportsPage, pnlPage, expensesPage, productReportPage } from './reports.js';
 import { productsPage, settingsPage } from './misc.js';
 
@@ -130,7 +130,7 @@ function shell(brand) {
         ${brand ? `<a href="#/genel/ozet">${icon('pie')}<span>Genel Muhasebe</span></a>` : ''}
         ${S.boot.brands.filter(x => x.id !== brand).map(x => `<a href="#/b/${x.id}/faturalar">${icon('swap')}<span>${esc(x.name)}</span></a>`).join('')}
       </nav>
-      <div class="foot nav"><a href="javascript:void 0" id="th">${icon('moon')}<span>Açık / koyu tema</span></a><a href="javascript:void 0" id="lo">${icon('out')}<span>Çıkış</span></a></div>
+      <div class="foot nav">${brand ? `<a href="${base}arsiv" data-p="arsiv">${icon('box')}<span>Arşiv</span></a>` : ''}<a href="javascript:void 0" id="th">${icon('moon')}<span>Açık / koyu tema</span></a><a href="javascript:void 0" id="lo">${icon('out')}<span>Çıkış</span></a></div>
     </aside>
     <main class="main"><header class="topbar"><button class="btn ghost icon burger" id="bg">${icon('menu')}</button><h1 id="title"></h1><span class="sp"></span>
       <div class="user"><div><b>${esc(b ? b.name : 'Testeresan')}</b><span>${esc(b ? 'MARKA PANELİ' : 'GENEL MUHASEBE')}</span></div><a class="avatar" href="#/sec" title="Marka değiştir">${icon('user')}</a></div></header>
@@ -147,7 +147,7 @@ function markNav(p) {
   const app = document.getElementById('app'); if (!app) return;
   app.classList.remove('drawer'); app.querySelector('.scrim')?.remove();
   app.querySelectorAll('.mtabs a[data-mp]').forEach(a => a.classList.toggle('on', p === a.dataset.mp || (p.startsWith('fatura') && a.dataset.mp === 'faturalar') || (p.startsWith('musteri') && a.dataset.mp === 'musteriler') || (p.startsWith('urun') && a.dataset.mp === 'urunler')));
-  app.querySelectorAll('.side nav a[data-p]').forEach(a => a.classList.toggle('on', p === a.dataset.p || (p.startsWith('fatura/') && a.dataset.p === 'faturalar' && p !== 'fatura/yeni') || (p.startsWith('musteri/') && a.dataset.p === 'musteriler') || (p.startsWith('urun/') && a.dataset.p === 'urunler')));
+  app.querySelectorAll('.side a[data-p]').forEach(a => a.classList.toggle('on', p === a.dataset.p || (p.startsWith('fatura/') && a.dataset.p === 'faturalar' && p !== 'fatura/yeni') || (p.startsWith('musteri/') && a.dataset.p === 'musteriler') || (p.startsWith('urun/') && a.dataset.p === 'urunler')));
 }
 export function setTitle(html) { const t = document.getElementById('title'); if (t) t.innerHTML = html; document.title = (t ? t.textContent : '') + ' · Zeplin'; }
 
@@ -187,6 +187,7 @@ async function route() {
       if (p0 === 'musteriler') return await customersPage(ctx);
       if (p0 === 'musteri') return await customerDetail(ctx, Number(sub[1]));
       if (p0 === 'raporlar') return await reportsPage(ctx);
+      if (p0 === 'arsiv') return await archivePage(ctx);
     }
     else {
       if (p0 === 'musteriler') return await customersPage(ctx);

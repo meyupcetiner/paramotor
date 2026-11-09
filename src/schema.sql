@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS products (id INTEGER PRIMARY KEY AUTOINCREMENT, name 
 CREATE TABLE IF NOT EXISTS variants (id INTEGER PRIMARY KEY AUTOINCREMENT, product_id INTEGER NOT NULL, label TEXT NOT NULL, diameter REAL, thickness REAL, bore TEXT, teeth INTEGER, width REAL, tpi TEXT, length REAL, sort INTEGER DEFAULT 0, active INTEGER DEFAULT 1);
 CREATE INDEX IF NOT EXISTS ix_variants_product ON variants(product_id);
 CREATE TABLE IF NOT EXISTS customers (id INTEGER PRIMARY KEY AUTOINCREMENT, brand_id TEXT NOT NULL, name TEXT, phone TEXT, address TEXT, il TEXT, ilce TEXT, is_official INTEGER DEFAULT 0, tax_no TEXT, official_title TEXT, tax_office TEXT, person_type TEXT, note TEXT, created_at TEXT);
-CREATE UNIQUE INDEX IF NOT EXISTS ux_customers_phone ON customers(brand_id, phone);
+CREATE INDEX IF NOT EXISTS ix_customers_phone ON customers(brand_id, phone);
 CREATE INDEX IF NOT EXISTS ix_customers_brand ON customers(brand_id);
 CREATE TABLE IF NOT EXISTS invoices (id INTEGER PRIMARY KEY AUTOINCREMENT, brand_id TEXT NOT NULL, seq INTEGER, invoice_no TEXT, title TEXT, customer_id INTEGER, date TEXT NOT NULL, source_id INTEGER, payment_id INTEGER, rep_id INTEGER, is_official INTEGER DEFAULT 0, is_promo INTEGER DEFAULT 0, cust_name TEXT, cust_phone TEXT, cust_address TEXT, cust_il TEXT, cust_ilce TEXT, tax_no TEXT, official_title TEXT, tax_office TEXT, person_type TEXT, order_info TEXT, note TEXT, raw_msg TEXT, prices_incl_vat INTEGER DEFAULT 0, subtotal REAL DEFAULT 0, vat_total REAL DEFAULT 0, total REAL DEFAULT 0, auto_batch_id INTEGER, created_at TEXT, updated_at TEXT);
 CREATE INDEX IF NOT EXISTS ix_invoices_brand_date ON invoices(brand_id, date);

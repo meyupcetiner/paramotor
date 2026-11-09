@@ -43,6 +43,7 @@ async function ensureDB(env) {
   if (READY) return;
   const t = await first(env, "SELECT name FROM sqlite_master WHERE type='table' AND name='invoices'");
   if (!t) await env.DB.exec(SCHEMA);
+  await env.DB.exec('DROP INDEX IF EXISTS ux_customers_phone; CREATE INDEX IF NOT EXISTS ix_customers_phone ON customers(brand_id, phone);'); // aynı telefonla farklı müşteri (şirket + satın almacı) olabilir
   await env.DB.exec("CREATE TABLE IF NOT EXISTS sales_reps (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, aliases TEXT, color TEXT, sort INTEGER DEFAULT 0, active INTEGER DEFAULT 1);");
   const cols = await all(env, "PRAGMA table_info(invoices)");
   if (!cols.some(c => c.name === 'rep_id')) await env.DB.exec('ALTER TABLE invoices ADD COLUMN rep_id INTEGER;');
@@ -211,6 +212,16 @@ async function ensureDB(env) {
     for (const v of vs) { const o = { ...v }; fillFromLabel(o); if (o.thickness !== v.thickness || o.diameter !== v.diameter || o.teeth !== v.teeth || o.bore !== v.bore) await run(env, 'UPDATE variants SET diameter=?, thickness=?, bore=?, teeth=? WHERE id=?', o.diameter, o.thickness, o.bore, o.teeth, v.id); }
     await run(env, "INSERT INTO settings (key,value) VALUES ('migr_v14','1') ON CONFLICT(key) DO NOTHING");
   }
+  if (!(await first(env, "SELECT value FROM settings WHERE key='migr_v15'"))) { // v15: aynı telefonla yanlış müşteriye bağlanan faturaları (Malet ↔ Berat Taşçı gibi) doğru müşteriye taşı
+    const rows = await all(env, 'SELECT i.id, i.brand_id, i.cust_name, i.cust_phone, i.cust_address, i.cust_il, i.cust_ilce, i.is_official, i.tax_no, i.official_title, i.tax_office, c.name cname, c.official_title ctitle FROM invoices i JOIN customers c ON c.id=i.customer_id WHERE i.cust_name IS NOT NULL AND c.name IS NOT NULL');
+    for (const r of rows) {
+      if (sameName(r.cname, r.cust_name) || (r.ctitle && sameName(r.ctitle, r.cust_name))) continue;
+      if (!/\p{L}{3}/u.test(r.cust_name) || /^(acil|kargo|ma[gğ]aza|teslim|kap[ıi]da|resm[iİ]|yurt[iİ]ç[iİ]|aras|mng|ptt)\b/iu.test(r.cust_name.trim())) continue; // elle düzeltilmiş başlık-isimler (ACİL vb.) bırakılır
+      const cid = await upsertCustomer(env, r.brand_id, { name: r.cust_name, phone: r.cust_phone, address: r.cust_address, il: r.cust_il, ilce: r.cust_ilce, is_official: r.is_official, tax_no: r.tax_no, official_title: r.official_title, tax_office: r.tax_office });
+      if (cid && cid.id) await run(env, 'UPDATE invoices SET customer_id=? WHERE id=?', cid.id, r.id);
+    }
+    await run(env, "INSERT INTO settings (key,value) VALUES ('migr_v15','1') ON CONFLICT(key) DO NOTHING");
+  }
   await normalizeServices(env);
   READY = true;
 }
@@ -316,12 +327,24 @@ const lookups = async env => ({
 const custKey = n => fold(String(n || '')).replace(/[^a-z0-9]+/g, ' ').trim().replace(/([a-z])(\d+)$/, '$1 $2');
 const custBase = n => custKey(n).replace(/\s*\d+$/, '').trim();
 const placeOk = (a, b) => (!a.il || !b.il || custKey(a.il) === custKey(b.il)) && (!a.ilce || !b.ilce || custKey(a.ilce) === custKey(b.ilce));
+// Aynı telefon ama bambaşka isim (ör. şirket satın almacısı ↔ şirket, farklı kişiler) aynı müşteri sayılmaz
+const STOPW = new Set('ltd sti san tic ve as a s sirketi limited anonim sanayi ticaret insaat otomotiv otomativ yedek parca tedarik makine makina gida yapi muhendislik ithalat ihracat ith ihr pazarlama paz dis orman urunleri taahhut tasimacilik metal demir celik usta'.split(' '));
+function lev(a, b) { const m = a.length, n = b.length; if (!m || !n) return Math.max(m, n); let prev = Array.from({ length: n + 1 }, (_, j) => j); for (let i = 1; i <= m; i++) { const cur = [i]; for (let j = 1; j <= n; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)); prev = cur; } return prev[n]; }
+export function sameName(a, b) {
+  const x = custKey(a).replace(/\s*\d+$/, ''), y = custKey(b).replace(/\s*\d+$/, '');
+  if (!x || !y) return true;
+  const cx = x.replace(/\s/g, ''), cy = y.replace(/\s/g, '');
+  if (cx === cy || cx.includes(cy) || cy.includes(cx)) return true;
+  if (1 - lev(cx, cy) / Math.max(cx.length, cy.length) >= 0.8) return true;
+  const tx = x.split(' ').filter(t => t.length >= 4 && !STOPW.has(t)), ty = new Set(y.split(' ').filter(t => t.length >= 4 && !STOPW.has(t)));
+  return tx.some(t => ty.has(t) || [...ty].some(u => 1 - lev(t, u) / Math.max(t.length, u.length) >= 0.8));
+}
 async function upsertCustomer(env, brand, c) {
   const np = normalizePhone(c.phone);
   const phone = np.ok ? np.phone : (c.phone || '').trim() || null;
   let row = null, byId = false;
   if (c.customer_id) { row = await first(env, 'SELECT * FROM customers WHERE id=? AND brand_id=?', c.customer_id, brand); byId = !!row; }
-  if (!row && phone) row = await first(env, 'SELECT * FROM customers WHERE brand_id=? AND phone=?', brand, phone);
+  if (!row && phone) { const rs = await all(env, 'SELECT * FROM customers WHERE brand_id=? AND phone=? ORDER BY id', brand, phone); row = !c.name ? rs[0] || null : rs.find(x => sameName(x.name, c.name) || (x.official_title && sameName(x.official_title, c.name)) || (c.official_title && sameName(x.name, c.official_title))) || null; }
   const f = { name: c.name || null, phone, address: c.address || null, il: c.il || null, ilce: c.ilce || null };
   if (!row && !f.name && !f.phone) return null; // isimsiz mağaza müşterisi: müşteri kaydı açılmaz
   if (!row && f.name) { // telefonla bulunamadı: aynı isimli müşteriler
@@ -488,9 +511,18 @@ async function customerAggregates(env, brand, settings) {
   const all0 = await loadSales(env, brandFilter(brand)); const sales = all0;
   const R = { ...DEFAULT_SETTINGS.segment_rules, ...(settings.segment_rules || {}) };
   const today = new Date().toISOString().slice(0, 10);
-  const map = new Map(custs.map(c => [c.id, { ...c, order_count: 0, total: 0, net: 0, first_order: null, last_order: null, dates: [], sources: {}, payments: {}, products: {}, categories: {} }]));
+  // genel muhasebede farklı markalardaki aynı müşteri (aynı isim + uyumlu il/ilçe) tek satırda birleşir
+  const alias = new Map(), leaders = [];
+  if (brand === 'all') for (const c of custs.sort((a, b) => a.id - b.id)) {
+    const k = custKey(c.name); const L = k && leaders.find(x => x._k === k && placeOk(x, c) && x.brand_ids.indexOf(c.brand_id) < 0);
+    if (L) { alias.set(c.id, L.id); L.brand_ids.push(c.brand_id); L.member_ids.push(c.id); for (const f of ['phone', 'address', 'il', 'ilce', 'tax_no', 'official_title', 'tax_office']) L[f] ||= c[f]; L.is_official ||= c.is_official; }
+    else { c._k = k; c.brand_ids = [c.brand_id]; c.member_ids = [c.id]; leaders.push(c); }
+  }
+  const base0 = brand === 'all' ? leaders : custs;
+  const map = new Map(base0.map(c => [c.id, { ...c, order_count: 0, total: 0, net: 0, first_order: null, last_order: null, dates: [], sources: {}, payments: {}, products: {}, categories: {} }]));
+  const cOf = id => map.get(alias.get(id) ?? id);
   for (const inv of sales) {
-    const c = map.get(inv.customer_id); if (!c) continue;
+    const c = cOf(inv.customer_id); if (!c) continue;
     c.order_count++; c.total += inv.total; c.net += inv.subtotal; c.dates.push(inv.date);
     if (inv.source_id) c.sources[inv.source_id] = (c.sources[inv.source_id] || 0) + 1;
     if (inv.payment_id) c.payments[inv.payment_id] = (c.payments[inv.payment_id] || 0) + 1;
@@ -500,10 +532,10 @@ async function customerAggregates(env, brand, settings) {
       if (cat) c.categories[cat] = (c.categories[cat] || 0) + (l.line_net || 0);
     }
   }
-  for (const inv of all0) { const c = map.get(inv.customer_id); if (!c) continue; c._tags ||= new Set(hashtags(c.note)); for (const t of hashtags(inv.note)) c._tags.add(t); }
+  for (const inv of all0) { const c = cOf(inv.customer_id); if (!c) continue; c._tags ||= new Set(hashtags(c.note)); for (const t of hashtags(inv.note)) c._tags.add(t); }
   const top = o => { const e = Object.entries(o).sort((a, b) => b[1] - a[1])[0]; return e ? e[0] : null; };
   return [...map.values()].map(c => {
-    c.tags = [...(c._tags || new Set(hashtags(c.note)))].filter(Boolean); delete c._tags;
+    c.tags = [...(c._tags || new Set(hashtags(c.note)))].filter(Boolean); delete c._tags; delete c._k;
     c.dates.sort();
     c.first_order = c.dates[0] || null; c.last_order = c.dates[c.dates.length - 1] || null;
     c.avg_gap = c.dates.length > 1 ? Math.round(daysBetween(c.first_order, c.last_order) / (c.dates.length - 1)) : null;
@@ -798,8 +830,10 @@ async function api(req, env, url) {
     const id = Number(mm[1]);
     if (m === 'GET') {
       const c = await first(env, 'SELECT * FROM customers WHERE id=?', id); if (!c) return err('Müşteri bulunamadı.', 404);
-      const agg = (await customerAggregates(env, c.brand_id, settings)).find(x => x.id === id);
-      const invs = await all(env, 'SELECT * FROM invoices WHERE customer_id=? ORDER BY date DESC, id DESC', id);
+      const gen = q.get('all') === '1';
+      const agg = (await customerAggregates(env, gen ? 'all' : c.brand_id, settings)).find(x => gen ? (x.member_ids || [x.id]).includes(id) : x.id === id);
+      const ids = gen && agg && agg.member_ids ? agg.member_ids : [id];
+      const invs = await all(env, `SELECT * FROM invoices WHERE customer_id IN (${ids.map(() => '?').join(',')}) ORDER BY date DESC, id DESC`, ...ids);
       if (!agg) { const ds = invs.map(i => i.date).sort(); Object.assign(c, { order_count: invs.length, total: r2(invs.reduce((a, i) => a + (i.total || 0), 0)), first_order: ds[0] || null, last_order: ds[ds.length - 1] || null, segment: c.archived ? 'Arşivde' : 'Sipariş yok' }); c.avg_basket = c.order_count ? r2(c.total / c.order_count) : 0; }
       return json({ customer: agg || c, invoices: invs });
     }
@@ -1031,7 +1065,7 @@ async function api(req, env, url) {
       const np = normalizePhone(iv.phone || ''); const phone = np.ok ? np.phone : null;
       let cid = null;
       if (iv.name || phone) {
-        const row = phone ? await first(env, 'SELECT id FROM customers WHERE brand_id=? AND phone=?', iv.brand, phone)
+        const row = phone ? (await all(env, 'SELECT id, name, official_title FROM customers WHERE brand_id=? AND phone=?', iv.brand, phone)).find(x => !iv.name || sameName(x.name, iv.name) || (x.official_title && sameName(x.official_title, iv.name)))
           : await first(env, 'SELECT id FROM customers WHERE brand_id=? AND phone IS NULL AND name=?', iv.brand, iv.name);
         if (row) cid = row.id;
         else cid = (await run(env, 'INSERT INTO customers (brand_id,name,phone,address,il,ilce,is_official,tax_no,official_title,tax_office,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)',

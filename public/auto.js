@@ -66,7 +66,7 @@ export async function autoPage(ctx) {
     $('#res', el).innerHTML = `<div class="card"><div class="empty"><span class="spin"></span><div style="margin-top:10px">Mesajlar okunuyor${STATE.images.length ? `, ${STATE.images.length} görsel işleniyor` : ''}… Bu işlem görsel sayısına göre 10–60 sn sürebilir.</div></div></div>`;
     try {
       const r = await api.post('/auto/parse', { brand, date: dateEl.value, text: txt.value, images: STATE.images, engine: $('#rule', el)?.checked ? 'kural' : undefined });
-      STATE.result = { ...r, date: dateEl.value, orders: r.orders.map((o, i) => ({ ...o, _raw_index: i, _ok: false, _off: !!(o.duplicate || o.batch_duplicate_of !== undefined || o.exchange) })) };
+      STATE.result = { ...r, date: dateEl.value, orders: r.orders.map((o, i) => ({ ...o, _raw_index: i, _ok: false, _off: !!(o.duplicate || o.batch_duplicate_of !== undefined) })) };
       drawResult(ctx);
     } catch (e) { $('#res', el).innerHTML = `<div class="notice">${esc(e.message)}</div>`; }
     btn.disabled = false; btn.innerHTML = `${icon('spark')} Oluştur`;
@@ -138,7 +138,7 @@ function orderCard(o, i) {
   const rp = repById(o.rep_id); const src = srcById(o.source_id), pay = payById(o.payment_id);
   const chip = (txt, cls, color) => txt ? `<span class="mchip ${cls}"${color ? ` style="--c:${esc(color)}"` : ''}>${esc(txt)}</span>` : '';
   const metaHtml = [chip(dmy(o.date), 'date'), chip(src && src.name, 'src', src && src.color), chip(pay && pay.name, 'pay', pay && pay.color), chip(rp ? rp.name : (o.rep_raw ? o.rep_raw + ' (yeni)' : ''), 'rep'), chip([o.ilce, o.il].filter(Boolean).join(' / '), 'loc')].filter(Boolean).join('');
-  const tags = [o.anonymous ? '<span class="pill soft">Mağaza · isimsiz</span>' : ex ? `<span class="badge-old">${ex.orders + 1}. sipariş</span>` : '', o.is_official ? '<span class="pill soft">Resmi</span>' : '', o.exchange ? '<span class="pill warn">DEĞİŞİM</span>' : '', o.duplicate ? `<span class="pill bad">Mükerrer: ${esc(o.duplicate.invoice_no)}</span>` : '', o.batch_duplicate_of !== undefined ? `<span class="pill bad">#${o.batch_duplicate_of + 1} ile aynı</span>` : ''].join('');
+  const tags = [o.anonymous ? '<span class="pill soft">Mağaza · isimsiz</span>' : ex ? `<span class="badge-old">${ex.orders + 1}. sipariş</span>` : '', o.is_official ? '<span class="pill soft">Resmi</span>' : '', o.exchange ? '<span class="pill warn">DEĞİŞİM</span>' : '', o.phone_from_history ? '<span class="pill soft" title="Mesajda telefon yoktu; aynı isim ve il/ilçedeki önceki müşteriden alındı">Tel. önceki siparişten</span>' : '', o.duplicate ? `<span class="pill bad">Mükerrer: ${esc(o.duplicate.invoice_no)}</span>` : '', o.batch_duplicate_of !== undefined ? `<span class="pill bad">#${o.batch_duplicate_of + 1} ile aynı</span>` : ''].join('');
   const iss = [...miss.map(k => `${MISS_TR[k] || k} yok`), ...(o.items || []).flatMap((it, j) => itemIssues(it).map(t => (o.items.length > 1 ? `${j + 1}. ürün: ` : '') + t.toLowerCase()))];
   return `<div class="ocard ${o._ok && !o._off ? 'ok' : ''} ${o._off ? 'dis' : ''} ${iss.length && !o._off ? 'chk' : ''}" data-i="${i}">
     ${iss.length && !o._off ? `<div class="chkbar" data-open>${icon('warn')}<b>Kontrol et:</b> ${iss.map(esc).join(' · ')}</div>` : ''}

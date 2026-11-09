@@ -916,6 +916,18 @@ async function api(req, env, url) {
       if (o.payment === 'Kapıda (tür belirsiz)') { note = (note ? note + ' ' : '') + 'Kapıda ödeme yazıyor, nakit/kart belirtilmemiş.'; if (!flags.includes('payment')) flags.push('payment'); }
       let existing = null;
       if (np.ok) existing = await first(env, 'SELECT c.id, c.name, (SELECT COUNT(*) FROM invoices i WHERE i.customer_id=c.id) orders FROM customers c WHERE brand_id=? AND phone=?', b.brand, np.phone);
+      // telefon yazmıyorsa: aynı isim + aynı il/ilçe olan önceki sipariş/müşterinin numarası çekilir; farklı yerdeyse "İsim 2" olarak açılır
+      let custName = o.customer_name || '', phoneOut = np.ok ? np.phone : (o.phone || ''), filled = {};
+      if (!np.ok && custName && !o.anonymous) {
+        const key = custKey(custName), base = custBase(custName), here = { il: o.il, ilce: o.ilce };
+        const prev = orders.find(x => x.phone && custKey(x.customer_name) === key && placeOk(x, here));
+        const fam = (await all(env, "SELECT c.*, (SELECT MAX(date) FROM invoices i WHERE i.customer_id=c.id) last, (SELECT COUNT(*) FROM invoices i WHERE i.customer_id=c.id) orders FROM customers c WHERE brand_id=? AND name IS NOT NULL AND IFNULL(archived,0)=0", b.brand)).filter(x => custBase(x.name) === base);
+        const hit = prev ? null : fam.filter(x => custKey(x.name) === key && x.phone && placeOk(x, here)).sort((a, c) => String(c.last || '').localeCompare(String(a.last || '')))[0];
+        if (prev) { phoneOut = prev.phone; existing = prev.existing_customer; filled = { il: prev.il, ilce: prev.ilce, address: prev.address }; }
+        else if (hit) { phoneOut = hit.phone; existing = { id: hit.id, name: hit.name, orders: hit.orders }; custName = hit.name; filled = { il: hit.il, ilce: hit.ilce, address: hit.address }; }
+        else if ((fam.some(x => custKey(x.name) === key) || orders.some(x => custKey(x.customer_name) === key)) && key === base) { const nums = [...fam.map(x => x.name), ...orders.filter(x => custBase(x.customer_name) === base).map(x => x.customer_name)].map(nm => ({ name: nm })).map(x => { const mm2 = custKey(x.name).match(/(\d+)$/); return mm2 && custKey(x.name) !== base ? Number(mm2[1]) : 1; }); custName = `${custName.trim()} ${Math.max(1, ...nums) + 1}`; }
+        if (phoneOut) { for (const f of ['phone', 'il', 'ilce']) { const ix = flags.indexOf(f); if (ix >= 0 && (f === 'phone' || filled[f])) flags.splice(ix, 1); } filled.from_history = true; }
+      }
       const odate = o.date || b.date || null;
       if (!odate && !flags.includes('date')) flags.push('date');
       const rep = repOf(o.rep) || L.reps.find(r => r.name === 'M.Cemal' && r.active !== 0) || null; // temsilci yazmıyorsa M.Cemal
@@ -965,7 +977,7 @@ async function api(req, env, url) {
       }
       if (o.rep_from_sender && !rep) flags.push('rep_sender');
       if (cikma.length) note = [cikma.map(x => 'Çıkma: ' + x).join(', '), note].filter(Boolean).join(' · ');
-      orders.push({ source_optional: !srcId(o.source) && /^\s*toplam\b/im.test(o.raw_text || ''), date: odate, exchange: !!o.exchange, is_promo: !!o.promo, vat_mode: o.vat_mode || null, rep_raw: o.rep || '', rep_id: rep ? rep.id : null, anonymous: !!o.anonymous, is_official: !!o.is_official, tax_no: o.tax_no || '', tax_office: o.tax_office || '', official_title: o.official_title || '', raw_text: o.raw_text || '', customer_name: o.customer_name || '', phone: np.ok ? np.phone : (o.phone || ''), address: o.address || '', il: o.il || '', ilce: o.ilce || '', source: o.source, source_id: srcId(o.source), payment: o.payment, payment_id: payId(o.payment), order_total: o.order_total ?? null, note, source_ref: o.source_ref || '', flags, existing_customer: existing, duplicate, items });
+      orders.push({ source_optional: !srcId(o.source) && /^\s*toplam\b/im.test(o.raw_text || ''), date: odate, exchange: !!o.exchange, is_promo: !!o.promo, vat_mode: o.vat_mode || null, rep_raw: o.rep || '', rep_id: rep ? rep.id : null, anonymous: !!o.anonymous, is_official: !!o.is_official, tax_no: o.tax_no || '', tax_office: o.tax_office || '', official_title: o.official_title || '', raw_text: o.raw_text || '', customer_name: custName, phone: phoneOut, phone_from_history: !!filled.from_history, address: o.address || filled.address || '', il: o.il || filled.il || '', ilce: o.ilce || filled.ilce || '', source: o.source, source_id: srcId(o.source), payment: o.payment, payment_id: payId(o.payment), order_total: o.order_total ?? null, note, source_ref: o.source_ref || '', flags, existing_customer: existing, duplicate, items });
     }
     // aynı parti içinde mükerrer
     orders.forEach((o, i) => { for (let j = 0; j < i; j++) { const x = orders[j]; if (o.phone && o.phone === x.phone && JSON.stringify(o.items.map(t => t.variant_id || t.description).sort()) === JSON.stringify(x.items.map(t => t.variant_id || t.description).sort())) o.batch_duplicate_of = j; } });

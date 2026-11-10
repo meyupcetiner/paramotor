@@ -618,8 +618,8 @@ function filterCustomers(list, q) {
   return list.filter(c => {
     if (has('q') && /^#/.test(q.get('q').trim())) { const ts = q.get('q').trim().split(/\s+/).filter(x => x.startsWith('#')).map(x => fold(x.slice(1))); if (!ts.every(t => (c.tags || []).some(x => x.startsWith(t)))) return false; }
     else if (has('q')) { const s = fold(q.get('q')); const d = s.replace(/\D/g, ''); if (!fold(c.name).includes(s) && !(d.length >= 3 && String(c.phone || '').includes(d)) && !fold(c.official_title).includes(s)) return false; }
-    if (has('il') && !multi('il').includes(c.il || '')) return false;
-    if (has('ilce') && !multi('ilce').includes(c.ilce || '')) return false;
+    if (has('il') && !multi('il').map(x => fold(x.trim())).includes(fold(c.il || ''))) return false; // KONYA = Konya
+    if (has('ilce') && !multi('ilce').map(x => fold(x.trim())).includes(fold(c.ilce || ''))) return false;
     if (has('min_total') && c.total < num('min_total')) return false;
     if (has('max_total') && c.total > num('max_total')) return false;
     if (has('threshold')) { const above = q.get('threshold_dir') !== 'below'; if (above ? c.total < num('threshold') : c.total >= num('threshold')) return false; }

@@ -625,3 +625,4 @@ td .avatar::after { display: none; }
   .rt-mm input.in { width: 110px; }
   .rt-barems { order: 3; flex-basis: 100%; }
 }
+.btn.pri.pulse { box-shadow: 0 0 0 4px var(--accent-soft); }

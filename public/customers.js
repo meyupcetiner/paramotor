@@ -39,7 +39,7 @@ export async function customersPage(ctx) {
       <div class="field"><span>Son sipariş tarihi</span><div class="row"><input class="in sm" type="date" data-f="last_from" value="${esc(query.get('last_from') || '')}"><input class="in sm" type="date" data-f="last_to" value="${esc(query.get('last_to') || '')}"></div></div>
       <div class="field"><span>Resmi / gayriresmi</span><select class="in sm" data-f="official"><option value="">Tümü</option><option value="1" ${query.get('official') === '1' ? 'selected' : ''}>Resmi bilgisi olanlar</option><option value="0" ${query.get('official') === '0' ? 'selected' : ''}>Gayriresmi</option></select></div>
     </div>
-    <div class="row wrap" style="padding:0 16px 14px"><button class="btn sm" id="savef">${icon('tag')} Filtreyi segment olarak kaydet</button>${query.get('seg_id') ? `<button class="btn sm danger" id="delseg">Bu kayıtlı segmenti sil</button>` : ''}<span class="sp"></span><button class="btn sm" id="clr">Filtreleri temizle</button></div>
+    <div class="row wrap" style="padding:0 16px 14px"><button class="btn sm" id="savef">${icon('tag')} Filtreyi segment olarak kaydet</button>${query.get('seg_id') ? `<button class="btn sm danger" id="delseg">Bu kayıtlı segmenti sil</button>` : ''}<span class="sp"></span><button class="btn sm" id="clr">Filtreleri temizle</button><button class="btn sm pri" id="applyf">${icon('check')} Filtreleri uygula</button></div>
   </div>
   <div class="card"><div class="hd"><h3>Otomatik segmentler</h3><span class="sp"></span><button class="btn sm ghost" id="hl">Nasıl hesaplanır?</button></div><div class="bd"><div class="chips">${Object.keys(SEG_COLORS).filter(s => s !== 'Sipariş yok' || d.segments[s]).map(s => `<button class="chip ${multi('segment').includes(s) ? 'on' : ''}" data-m="segment" data-v="${esc(s)}" title="${esc(help[s] || '')}"><span class="sw" style="width:8px;height:8px;border-radius:2px;background:${SEG_COLORS[s]}"></span>${esc(s)} <span class="n">${int(d.segments[s] || 0)}</span></button>`).join('')}</div>
     <div class="helpbox hidden" id="hb" style="margin-top:12px">${Object.entries(help).map(([k, v]) => `<div style="margin:3px 0"><b>${esc(k)}:</b> ${esc(v)}</div>`).join('')}<div class="muted small" style="margin-top:6px">Eşikler Ayarlar › Segment kuralları'ndan değiştirilebilir. Sıra: Yeni → Riskli/Uykuda → Sadık → Tekrar potansiyeli → Tek seferlik → Aktif.</div></div></div></div>
@@ -60,8 +60,15 @@ export async function customersPage(ctx) {
   $('#fb', el).onclick = () => $('#fp', el).classList.toggle('hidden');
   $('#hl', el).onclick = () => $('#hb', el).classList.toggle('hidden');
   let tm; $('#q', el).oninput = e => { clearTimeout(tm); tm = setTimeout(() => setQ('q', e.target.value.trim()), 350); };
-  $$('[data-f]', el).forEach(i => i.onchange = () => setQ(i.dataset.f, i.value.trim()));
-  $$('[data-m]', el).forEach(b => b.onclick = () => { const k = b.dataset.m, v = b.dataset.v; const cur = multi(k); const n = cur.includes(v) ? cur.filter(x => x !== v) : [...cur, v]; setQ(k, n.join(',')); });
+  // filtre paneli: seçimler biriktirilir, "Filtreleri uygula" (ya da Enter) ile uygulanır
+  const pend = new URLSearchParams(query); pend.delete('page'); pend.delete('seg_id');
+  const pset = (k, v) => { if (v) pend.set(k, v); else pend.delete(k); $('#applyf', el).classList.add('pulse'); };
+  const applyF = () => { location.hash = `${base}musteriler?${pend}`; };
+  $$('#fp [data-f]', el).forEach(i => { i.onchange = () => pset(i.dataset.f, i.value.trim()); i.onkeydown = e => { if (e.key === 'Enter') { pset(i.dataset.f, i.value.trim()); applyF(); } }; });
+  $$('#fp [data-m]', el).forEach(b => b.onclick = () => { const k = b.dataset.m, v = b.dataset.v; const cur = (pend.get(k) || '').split(',').filter(Boolean); const n = cur.includes(v) ? cur.filter(x => x !== v) : [...cur, v]; b.classList.toggle('on', !cur.includes(v)); pset(k, n.join(',')); });
+  $('#applyf', el).onclick = () => { $$('#fp [data-f]', el).forEach(i => pset(i.dataset.f, i.value.trim())); applyF(); };
+  $$('[data-f]:not(#fp [data-f])', el).forEach(i => i.onchange = () => setQ(i.dataset.f, i.value.trim()));
+  $$('[data-m]:not(#fp [data-m])', el).forEach(b => b.onclick = () => { const k = b.dataset.m, v = b.dataset.v; const cur = multi(k); const n = cur.includes(v) ? cur.filter(x => x !== v) : [...cur, v]; setQ(k, n.join(',')); });
   $$('[data-sort]', el).forEach(th => th.onclick = () => { const q = new URLSearchParams(query); const k = th.dataset.sort; q.set('dir', q.get('sort') === k && q.get('dir') !== 'asc' ? 'asc' : 'desc'); q.set('sort', k); location.hash = `${base}musteriler?${q}`; });
   $$('[data-pg]', el).forEach(b => b.onclick = () => { const q = new URLSearchParams(query); q.set('page', b.dataset.pg); location.hash = `${base}musteriler?${q}`; });
   $$('tr[data-id]', el).forEach(tr => tr.onclick = () => { location.hash = `${base}musteri/${tr.dataset.id}`; });

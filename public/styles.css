@@ -626,3 +626,13 @@ td .avatar::after { display: none; }
   .rt-barems { order: 3; flex-basis: 100%; }
 }
 .btn.pri.pulse { box-shadow: 0 0 0 4px var(--accent-soft); }
+/* filtre: tarih aralığı iki kutu — sütuna sığmayıp yandakinin üstüne taşıyordu */
+.filters .field { min-width: 0; }
+.filters .field.span2 { grid-column: span 2; }
+.daterange { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.daterange input { flex: 1 1 0; min-width: 0; width: 100%; }
+.daterange b { color: var(--muted); font-weight: 400; }
+@media (max-width: 520px) { .filters .field.span2 { grid-column: 1 / -1; } }
+.filters { align-items: start; }
+.filters .field > .row { min-width: 0; flex-wrap: nowrap; }
+.filters .field > .row > * { min-width: 0; flex: 1 1 0; }
